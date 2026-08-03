@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <GameDir>C:\Path\To\Steam\steamapps\common\ULTRAKILL</GameDir>
+    <BepInExDir>C:\Path\To\Your\BepInEx</BepInExDir>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Local game/reference paths
+Directory.Build.props
+
+# Development-only material
+backups/
+research/
+startup-trace.txt
+
+# IDE and operating-system files
+.vs/
+.vscode/
+*.user
+*.suo
+.DS_Store
+Thumbs.db

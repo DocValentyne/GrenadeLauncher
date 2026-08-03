@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>GrenadeLauncher</AssemblyName>
+    <RootNamespace>GrenadeLauncherMod</RootNamespace>
+    <Version>1.0.0</Version>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <ManagedDir>$(GameDir)\ULTRAKILL_Data\Managed</ManagedDir>
+  </PropertyGroup>
+
+  <Target Name="ValidateLocalPaths" BeforeTargets="ResolveReferences"
+          Condition="'$(GameDir)' == '' Or '$(BepInExDir)' == ''">
+    <Error Text="Set GameDir and BepInExDir, or copy Directory.Build.props.example to Directory.Build.props and edit its paths." />
+  </Target>
+
+  <ItemGroup>
+    <Compile Include="Plugin.cs" />
+    <Compile Include="AlternateFires.cs" />
+    <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(ManagedDir)\UnityEngine.PhysicsModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AudioModule" HintPath="$(ManagedDir)\UnityEngine.AudioModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(ManagedDir)\UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ParticleSystemModule" HintPath="$(ManagedDir)\UnityEngine.ParticleSystemModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UIModule" HintPath="$(ManagedDir)\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(ManagedDir)\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(ManagedDir)\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="Unity.Addressables" HintPath="$(ManagedDir)\Unity.Addressables.dll" Private="false" />
+    <Reference Include="Unity.ResourceManager" HintPath="$(ManagedDir)\Unity.ResourceManager.dll" Private="false" />
+    <Reference Include="BepInEx" HintPath="$(BepInExDir)\core\BepInEx.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(BepInExDir)\core\0Harmony.dll" Private="false" />
+    <Reference Include="PluginConfigurator" HintPath="$(BepInExDir)\plugins\EternalsTeam-PluginConfigurator\PluginConfigurator\PluginConfigurator.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="GrenadeLauncher.png" LogicalName="GrenadeLauncherMod.icon.png" />
+  </ItemGroup>
+</Project>
