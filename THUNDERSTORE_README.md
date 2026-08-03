@@ -1,5 +1,7 @@
 # Grenade Launcher
 
+Detailed weapon documentation is available in the Wiki tab on the Thunderstore mod page.
+
 Grenade Launcher is a BepInEx 5 mod for ULTRAKILL by DocValentyne. It adds a terminal-selectable alternate form for all three Rocket Launcher variants, with new primary and alternate fires.
 
 The primary fire uses an arcing grenade inspired by the Team Fortress 2 Demoman's stock Grenade Launcher. Its behavior and balance can be extensively customized through Plugin Configurator.

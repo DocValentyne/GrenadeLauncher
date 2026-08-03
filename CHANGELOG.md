@@ -1,9 +1,13 @@
 # Changelog
 
+## 1.0.2
+
+- Corrected the default enemy damage values: Hideous Mass now takes 85% damage, while Malicious Face uses 100%.
+- Existing configurations may need these values changed manually after updating.
+
 ## 1.0.1
 
 - Prevented Grenade Launcher runs from uploading scores to the public Cyber Grind leaderboard while preserving local Cyber Grind high scores.
-- Confirmed that PIPE DREAM, MOON SHOT, and OUT-SNIPED require an ordinary direct hit and cannot be earned with parried grenades.
 
 ## 1.0.0
 

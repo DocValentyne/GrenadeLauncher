@@ -21,7 +21,7 @@ namespace GrenadeLauncherMod
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }
@@ -414,7 +414,8 @@ namespace GrenadeLauncherMod
             {
                 { EnemyType.Cerberus, 120f },
                 { EnemyType.Gutterman, 110f },
-                { EnemyType.MaliciousFace, 90f },
+                { EnemyType.HideousMass, 85f },
+                { EnemyType.MaliciousFace, 100f },
                 { EnemyType.Mannequin, 200f },
                 { EnemyType.Providence, 175f },
                 { EnemyType.Schism, 125f }
