@@ -1,6 +1,6 @@
 {
   "name": "Grenade_Launcher",
-  "version_number": "1.0.0",
+  "version_number": "1.0.1",
   "website_url": "https://github.com/DocValentyne/GrenadeLauncher",
   "description": "Adds a fully configurable alternate Grenade Launcher for all three ULTRAKILL Rocket Launcher variants.",
   "dependencies": [

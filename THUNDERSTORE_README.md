@@ -20,16 +20,6 @@ Configuration is available under **Options -> Plugin Configurator -> Grenade Lau
 
 While the mod is loaded, Cyber Grind scores are kept in your local save but are not submitted to the public Steam leaderboard.
 
-## Building
-
-Copy `Directory.Build.props.example` to `Directory.Build.props`, update the two local paths, then run:
-
-```powershell
-dotnet build -c Release
-```
-
-You can instead pass the `GameDir` and `BepInExDir` MSBuild properties directly. Do not redistribute ULTRAKILL, BepInEx, or Plugin Configurator assemblies with the source.
-
 ## License
 
-Grenade Launcher is released under the [MIT License](LICENSE).
+Grenade Launcher is released under the MIT License.

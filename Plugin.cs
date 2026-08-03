@@ -21,7 +21,7 @@ namespace GrenadeLauncherMod
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.1";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }
@@ -170,6 +170,20 @@ namespace GrenadeLauncherMod
             return entry;
         }
 
+    }
+
+    // Grenade Launcher scores are still stored in the player's local save, but must not be
+    // uploaded to the public Cyber Grind leaderboard. FinalCyberRank performs local-best
+    // handling separately after this method returns, so suppressing this call affects only
+    // the Steam upload and leaves ordinary progression intact.
+    [HarmonyPatch(typeof(LeaderboardController), nameof(LeaderboardController.SubmitCyberGrindScore))]
+    internal static class CyberGrindLeaderboardPatch
+    {
+        private static bool Prefix()
+        {
+            Plugin.LogSource?.LogInfo("Blocked Cyber Grind leaderboard submission while Grenade Launcher is loaded; local high score remains enabled.");
+            return false;
+        }
     }
 
     internal enum GrenadeProjectileProfile
