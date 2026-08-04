@@ -608,13 +608,37 @@ namespace GrenadeLauncherMod
 
         private static void ResetPage(ConfigPanel panel, PluginConfigurator configurator)
         {
-            foreach (ConfigField field in panel.GetAllFields())
+            foreach (ConfigField field in GetDirectFields(panel, configurator))
             {
                 if (field == null || field is ConfigPanel || field is ButtonField)
                     continue;
                 ReloadFieldDefault(field);
             }
             FlushConfigurator(configurator);
+        }
+
+        // GetAllFields is reliable for child panels, but the configurator's root panel does
+        // not enumerate its direct fields in every PluginConfigurator build.  Reading the
+        // configurator's field registry and filtering by owner keeps "Reset this page" from
+        // silently doing nothing on the main page.
+        private static IEnumerable<ConfigField> GetDirectFields(ConfigPanel panel, PluginConfigurator configurator)
+        {
+            FieldInfo fieldsField = AccessTools.Field(typeof(PluginConfigurator), "fields");
+            System.Collections.IDictionary fields = fieldsField?.GetValue(configurator) as System.Collections.IDictionary;
+            PropertyInfo parentPanel = AccessTools.Property(typeof(ConfigField), "parentPanel");
+            if (fields != null && parentPanel != null)
+            {
+                foreach (object value in fields.Values)
+                {
+                    ConfigField field = value as ConfigField;
+                    if (field != null && ReferenceEquals(parentPanel.GetValue(field, null), panel))
+                        yield return field;
+                }
+                yield break;
+            }
+
+            foreach (ConfigField field in panel.GetAllFields())
+                yield return field;
         }
 
         private static void ResetAllPages(PluginConfigurator configurator)
@@ -868,8 +892,17 @@ namespace GrenadeLauncherMod
             if (marker == null)
                 return true;
 
-            if (marker.BlueHookReplacement && other != null && other.CompareTag("Player"))
-                return false;
+            if (marker.BlueHookReplacement)
+            {
+                // This is deliberately not a grenade explosion.  It must not inherit the
+                // grenade's per-enemy damage settings, rocket behavior, or burn behavior.
+                if (other != null && other.CompareTag("Player"))
+                    return false;
+                EnemyIdentifier replacementEnemy = GrenadeLauncherProjectile.TryGetLivingEnemy(other);
+                if (replacementEnemy != null)
+                    marker.DamageBlueHookReplacementEnemy(replacementEnemy, other);
+                return replacementEnemy == null;
+            }
 
             EnemyIdentifier enemy = GrenadeLauncherProjectile.TryGetLivingEnemy(other);
             if (enemy == null)
@@ -1030,6 +1063,7 @@ namespace GrenadeLauncherMod
         internal float ConfiguredStyleThreshold;
         internal bool Airshot;
         internal bool BlueHookReplacement;
+        internal float BlueHookLaunchForce;
 
         internal void TryAwardLongRangeStyle(EnemyIdentifier enemy)
         {
@@ -1090,6 +1124,23 @@ namespace GrenadeLauncherMod
                 : transform.position;
             GameObject target = hitCollider != null ? hitCollider.gameObject : enemy.gameObject;
             enemy.DeliverDamage(target, Vector3.zero, hitPoint, damage, false, 0f, SourceWeapon, false, true);
+        }
+
+        internal void DamageBlueHookReplacementEnemy(EnemyIdentifier enemy, Collider hitCollider)
+        {
+            if (enemy == null || enemy.dead || !manuallyDamagedEnemies.Add(enemy.GetInstanceID()))
+                return;
+
+            // DeliverDamage receives a force vector, not an explosion origin.  A fixed
+            // upward vector therefore gives every eligible enemy the same launch, whether
+            // it was near the centre or at the edge of the blast.
+            enemy.hitter = "bluehookexplosion";
+            Vector3 hitPoint = hitCollider != null
+                ? hitCollider.bounds.ClosestPoint(transform.position)
+                : transform.position;
+            GameObject target = hitCollider != null ? hitCollider.gameObject : enemy.gameObject;
+            enemy.DeliverDamage(target, Vector3.up * BlueHookLaunchForce, hitPoint,
+                Damage, false, 0f, null, false, true);
         }
     }
 

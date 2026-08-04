@@ -1114,13 +1114,11 @@ namespace GrenadeLauncherMod
     {
         private const string SlingshotAddress = "Assets/Prefabs/Levels/Interactive/GrapplePointSlingshot Variant.prefab";
         private const string ProvidenceSlingshotAddress = "Assets/Prefabs/Levels/Interactive/GrapplePointSlingshotProvidence.prefab";
-        private const string ProvidenceReachEffectAddress = "Assets/Particles/Environment/HookPointGrabPink.prefab";
         private const string DeleteEffectAddress = "Assets/Particles/SandboxDeleterEffect.prefab";
         private const string SandboxArmAddress = "Assets/Prefabs/Weapons/Special/Spawner Arm.prefab";
         private static GameObject current;
         private static GameObject slingshotPrefab;
         private static GameObject providenceSlingshotPrefab;
-        private static GameObject providenceReachEffectPrefab;
         private static GameObject rocketExplosionPrefab;
         private static GameObject deleteEffectPrefab;
         private static AudioClip deleteSound;
@@ -1263,6 +1261,10 @@ namespace GrenadeLauncherMod
             marker.BlueHookReplacement = true;
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
+            // Vanilla Explosion multiplies its direction vector by 50,000 before handing it
+            // to DeliverDamage.  We apply the equivalent force ourselves so it stays fixed
+            // instead of scaling with a target's position in the expanding blast.
+            marker.BlueHookLaunchForce = 100f * Mathf.Max(0f, PluginSettings.BlueReplacementForceMultiplier);
             foreach (Explosion explosion in blast.GetComponentsInChildren<Explosion>(true))
             {
                 if (explosion == null)
@@ -1273,7 +1275,9 @@ namespace GrenadeLauncherMod
                 explosion.maxSize *= providenceSizeMultiplier;
                 explosion.speed *= providenceSizeMultiplier;
                 explosion.pushForceMultiplier = 1f;
-                explosion.playerProjectileForceDirection = Vector3.up * (0.0025f * PluginSettings.BlueReplacementForceMultiplier);
+                explosion.playerProjectileForceDirection = Vector3.zero;
+                explosion.enemyDamageMultiplier = 1f;
+                explosion.ignite = false;
                 explosion.rocketExplosion = false;
                 explosion.isFup = false;
                 explosion.boosted = false;
@@ -1307,12 +1311,10 @@ namespace GrenadeLauncherMod
             try
             {
                 GameObject prefab = ResolveProvidenceSlingshotPrefab();
-                GameObject effectPrefab = ResolveProvidenceReachEffectPrefab();
-                if (effectPrefab == null)
-                {
-                    HookPoint hook = prefab != null ? prefab.GetComponentInChildren<HookPoint>(true) : null;
-                    effectPrefab = hook != null ? hook.reachParticle : null;
-                }
+                // Use the component reference from the actual Providence prefab.  The old
+                // direct asset lookup used its grab particle, which is not the reach effect.
+                HookPoint hook = prefab != null ? prefab.GetComponentInChildren<HookPoint>(true) : null;
+                GameObject effectPrefab = hook != null ? hook.reachParticle : null;
                 if (effectPrefab != null)
                 {
                     GameObject effect = UnityEngine.Object.Instantiate(effectPrefab, point, Quaternion.identity);
@@ -1338,21 +1340,6 @@ namespace GrenadeLauncherMod
                 Plugin.LogSource?.LogWarning("Could not load Providence hook-point visual: " + exception.Message);
             }
             return providenceSlingshotPrefab;
-        }
-
-        private static GameObject ResolveProvidenceReachEffectPrefab()
-        {
-            if (providenceReachEffectPrefab != null)
-                return providenceReachEffectPrefab;
-            try
-            {
-                providenceReachEffectPrefab = Addressables.LoadAssetAsync<GameObject>(ProvidenceReachEffectAddress).WaitForCompletion();
-            }
-            catch (Exception exception)
-            {
-                Plugin.LogSource?.LogWarning("Could not load Providence hook-point reach effect: " + exception.Message);
-            }
-            return providenceReachEffectPrefab;
         }
 
         private static GameObject ResolveRocketExplosionPrefab()
