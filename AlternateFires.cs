@@ -19,8 +19,10 @@ namespace GrenadeLauncherMod
         private static FloatSliderField greenUpwardVelocity;
         private static FloatSliderField greenGravity;
         private static FloatSliderField greenDirectDamage;
+        private static FloatSliderField greenAirshotDamage;
         private static FloatSliderField greenSurfaceDamage;
         private static FloatSliderField greenDirectExplosionSize;
+        private static FloatSliderField greenAirshotExplosionSize;
         private static FloatSliderField greenSurfaceExplosionSize;
         private static FloatSliderField greenDirectSelfDamage;
         private static FloatSliderField greenSurfaceSelfDamage;
@@ -45,6 +47,8 @@ namespace GrenadeLauncherMod
         private static FloatSliderField blueCooldown;
         private static FloatSliderField blueSlingshotForce;
         private static FloatSliderField bluePointSize;
+        private static FloatSliderField blueReplacementDamage;
+        private static FloatSliderField blueReplacementExplosionSize;
         private static FloatSliderField pipeDreamDistance;
         private static FloatSliderField moonShotDistance;
         private static FloatSliderField pipeDreamStylePoints;
@@ -62,8 +66,10 @@ namespace GrenadeLauncherMod
         internal static float GreenUpwardVelocityMultiplier => greenUpwardVelocity?.value ?? 1f;
         internal static float GreenGravityMultiplier => greenGravity?.value ?? 1f;
         internal static float GreenDirectDamage => greenDirectDamage?.value ?? 6f;
+        internal static float GreenAirshotDamage => greenAirshotDamage?.value ?? 7.5f;
         internal static float GreenSurfaceDamage => greenSurfaceDamage?.value ?? 4f;
         internal static float GreenDirectExplosionSize => greenDirectExplosionSize?.value ?? 1.4f;
+        internal static float GreenAirshotExplosionSize => greenAirshotExplosionSize?.value ?? 1f;
         internal static float GreenSurfaceExplosionSize => greenSurfaceExplosionSize?.value ?? 1f;
         internal static float GreenDirectSelfDamage => greenDirectSelfDamage?.value ?? 35f;
         internal static float GreenSurfaceSelfDamage => greenSurfaceSelfDamage?.value ?? 35f;
@@ -88,11 +94,13 @@ namespace GrenadeLauncherMod
         internal static float BlueCooldown => blueCooldown?.value ?? 7f;
         internal static float BlueSlingshotForce => blueSlingshotForce?.value ?? 0f;
         internal static float BluePointSize => bluePointSize?.value ?? 1f;
+        internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
+        internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
-        internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 100f);
-        internal static int MoonShotStylePoints => Mathf.RoundToInt(moonShotStylePoints?.value ?? 500f);
-        internal static int OutSnipedStylePoints => Mathf.RoundToInt(outSnipedStylePoints?.value ?? 500f);
+        internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
+        internal static int MoonShotStylePoints => Mathf.RoundToInt(moonShotStylePoints?.value ?? 550f);
+        internal static int OutSnipedStylePoints => Mathf.RoundToInt(outSnipedStylePoints?.value ?? 550f);
         internal static int WalkingBombStylePoints => Mathf.RoundToInt(walkingBombStylePoints?.value ?? 90f);
         internal static float PipeDreamDamageMultiplier => pipeDreamDamageMultiplier?.value ?? 1f;
         internal static float PipeDreamExplosionSizeMultiplier => pipeDreamExplosionSizeMultiplier?.value ?? 1f;
@@ -103,13 +111,16 @@ namespace GrenadeLauncherMod
         private static void InitializeAlternateSettings(PluginConfigurator configurator)
         {
             ConfigPanel green = new ConfigPanel(configurator.rootPanel, "Green contact grenade", "greenContactGrenade");
+            AddPageResetButton(green, "Reset this page to default", "resetGreenContactGrenade");
             greenCooldown = Slider(green, "Cooldown (seconds)", "greenCooldown", 0.05f, 10f, 6f, 2);
             greenSpeed = Slider(green, "Projectile speed multiplier", "greenSpeedMultiplier", 0.1f, 5f, 1.5f, 2);
             greenUpwardVelocity = Slider(green, "Upward velocity multiplier", "greenUpwardVelocityMultiplier", 0f, 5f, 1f, 2);
             greenGravity = Slider(green, "Gravity multiplier", "greenGravityMultiplier", 0.1f, 5f, 1f, 2);
             greenDirectDamage = Slider(green, "Direct hit damage", "greenDirectDamage", 0f, 20f, 6f, 2);
+            greenAirshotDamage = Slider(green, "Airshot damage", "greenAirshotDamage", 0f, 25f, 7.5f, 2);
             greenSurfaceDamage = Slider(green, "Surface contact damage", "greenSurfaceDamage", 0f, 20f, 4f, 2);
             greenDirectExplosionSize = Slider(green, "Direct explosion size (rocket = 1)", "greenDirectExplosionSize", 0.1f, 5f, 1.4f, 2);
+            greenAirshotExplosionSize = Slider(green, "Airshot explosion size (rocket = 1)", "greenAirshotExplosionSize", 0.1f, 5f, 1f, 2);
             greenSurfaceExplosionSize = Slider(green, "Surface explosion size (rocket = 1)", "greenSurfaceExplosionSize", 0.1f, 5f, 1f, 2);
             greenDirectSelfDamage = Slider(green, "Direct self damage (HP)", "greenDirectSelfDamage", 0f, 100f, 35f, 0);
             greenSurfaceSelfDamage = Slider(green, "Surface self damage (HP)", "greenSurfaceSelfDamage", 0f, 100f, 35f, 0);
@@ -117,6 +128,7 @@ namespace GrenadeLauncherMod
             greenLifetime = Slider(green, "Silent projectile lifetime", "greenLifetime", 1f, 60f, 15f, 1);
 
             ConfigPanel gel = new ConfigPanel(configurator.rootPanel, "Red blue-gel system", "redGelSystem");
+            AddPageResetButton(gel, "Reset this page to default", "resetRedGelSystem");
             gelProjectileSpeed = Slider(gel, "Gel projectile speed multiplier", "gelProjectileSpeedMultiplier", 0.1f, 5f, 1f, 2);
             gelCoveragePerDroplet = Slider(gel, "Enemy coverage per droplet (%)", "gelCoveragePerDroplet", 0.1f, 100f, 4f, 1);
             gelCoverageRequired = Slider(gel, "Enemy coverage required (%)", "gelCoverageRequired", 0f, 100f, 75f, 1);
@@ -132,17 +144,21 @@ namespace GrenadeLauncherMod
             timedFuseDetonatesStuck = new BoolField(gel, "Timed-fuse explosions detonate stuck grenades", "timedFuseDetonatesStuck", false);
 
             ConfigPanel blue = new ConfigPanel(configurator.rootPanel, "Blue slingshot point", "blueSlingshotPoint");
+            AddPageResetButton(blue, "Reset this page to default", "resetBlueSlingshotPoint");
             blueDistance = Slider(blue, "Placement distance", "bluePlacementDistance", 5.5f, 200f, 27f, 1);
             blueCooldown = Slider(blue, "Cooldown (seconds)", "blueCooldown", 0.05f, 10f, 7f, 2);
             blueSlingshotForce = Slider(blue, "Extra slingshot force", "blueSlingshotForce", -50f, 200f, 0f, 1);
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
+            blueReplacementDamage = Slider(blue, "Replacement explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
+            blueReplacementExplosionSize = Slider(blue, "Replacement explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
+            AddPageResetButton(style, "Reset this page to default", "resetStyleBonuses");
             pipeDreamDistance = Slider(style, "PIPE DREAM minimum distance", "pipeDreamMinimumDistance", 1f, 250f, 56f, 1);
             moonShotDistance = Slider(style, "MOON SHOT / OUT-SNIPED minimum distance", "moonShotMinimumDistance", 1f, 400f, 125f, 1);
-            pipeDreamStylePoints = Slider(style, "PIPE DREAM style points", "pipeDreamStylePoints", 0f, 5000f, 100f, 0);
-            moonShotStylePoints = Slider(style, "MOON SHOT style points", "moonShotStylePoints", 0f, 5000f, 500f, 0);
-            outSnipedStylePoints = Slider(style, "OUT-SNIPED style points", "outSnipedStylePoints", 0f, 5000f, 500f, 0);
+            pipeDreamStylePoints = Slider(style, "PIPE DREAM style points", "pipeDreamStylePoints", 0f, 10000f, 150f, 0);
+            moonShotStylePoints = Slider(style, "MOON SHOT style points", "moonShotStylePoints", 0f, 10000f, 550f, 0);
+            outSnipedStylePoints = Slider(style, "OUT-SNIPED style points", "outSnipedStylePoints", 0f, 10000f, 550f, 0);
             walkingBombStylePoints = Slider(style, "WALKING BOMB style points", "walkingBombStylePoints", 0f, 5000f, 90f, 0);
             pipeDreamDamageMultiplier = Slider(style, "PIPE DREAM damage multiplier", "pipeDreamDamageMultiplier", 0f, 10f, 1f, 2);
             pipeDreamExplosionSizeMultiplier = Slider(style, "PIPE DREAM explosion size multiplier", "pipeDreamExplosionSizeMultiplier", 0.1f, 10f, 1f, 2);
@@ -151,6 +167,7 @@ namespace GrenadeLauncherMod
 
             ConfigPanel debug = new ConfigPanel(configurator.rootPanel, "Debug logging", "debugLogging");
             debug.headerText = "These settings only write diagnostic information to the BepInEx log.";
+            AddPageResetButton(debug, "Reset this page to default", "resetDebugLogging");
             rangeTelemetry = new BoolField(debug, "Log direct-hit ranges", "rangeTelemetry", false);
         }
     }
@@ -1085,13 +1102,17 @@ namespace GrenadeLauncherMod
     internal static class HookPointManager
     {
         private const string SlingshotAddress = "Assets/Prefabs/Levels/Interactive/GrapplePointSlingshot Variant.prefab";
+        private const string ProvidenceSlingshotAddress = "Assets/Prefabs/Levels/Interactive/GrapplePointSlingshotProvidence.prefab";
         private const string DeleteEffectAddress = "Assets/Particles/SandboxDeleterEffect.prefab";
         private const string SandboxArmAddress = "Assets/Prefabs/Weapons/Special/Spawner Arm.prefab";
         private static GameObject current;
         private static GameObject slingshotPrefab;
+        private static GameObject providenceSlingshotPrefab;
+        private static GameObject rocketExplosionPrefab;
         private static GameObject deleteEffectPrefab;
         private static AudioClip deleteSound;
         private static bool loggedMissingPrefab;
+        private static bool loggedMissingReplacementExplosion;
         private static bool creationLockedUntilGround;
         private static bool currentHookUsed;
         private static HookPoint currentHook;
@@ -1175,6 +1196,8 @@ namespace GrenadeLauncherMod
 
         internal static void CompleteDelivery(Vector3 point)
         {
+            if (current != null && current.GetComponent<GeneratedBlueHookOwnership>() != null)
+                SpawnReplacementExplosion(point);
             PlayDeleteEffect(point);
             GameObject prefab = ResolveSlingshotPrefab();
             if (prefab == null)
@@ -1203,6 +1226,97 @@ namespace GrenadeLauncherMod
             nextHookStateCheckAt = Time.unscaledTime;
             currentHookUsed = false;
             creationLockedUntilGround = false;
+        }
+
+        private static void SpawnReplacementExplosion(Vector3 point)
+        {
+            PlayProvidenceReachEffect(point);
+            GameObject prefab = ResolveRocketExplosionPrefab();
+            if (prefab == null)
+            {
+                if (!loggedMissingReplacementExplosion)
+                {
+                    loggedMissingReplacementExplosion = true;
+                    Plugin.LogSource?.LogWarning("Could not find a vanilla rocket explosion prefab for blue hook-point replacement.");
+                }
+                return;
+            }
+
+            float sizeMultiplier = Mathf.Max(0.1f, PluginSettings.BlueReplacementExplosionSize);
+            GameObject blast = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
+            GrenadeLauncherExplosionMarker marker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
+            marker.BlueHookReplacement = true;
+            marker.Mode = GrenadeExplosionMode.Surface;
+            marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
+            foreach (Explosion explosion in blast.GetComponentsInChildren<Explosion>(true))
+            {
+                if (explosion == null)
+                    continue;
+                explosion.sourceWeapon = null;
+                explosion.damage = Mathf.RoundToInt(marker.Damage * 10f);
+                explosion.playerDamageOverride = -1;
+                explosion.maxSize *= sizeMultiplier;
+                explosion.speed *= sizeMultiplier;
+                explosion.pushForceMultiplier *= sizeMultiplier;
+                explosion.playerProjectileForceDirection = Vector3.up;
+                explosion.rocketExplosion = false;
+                explosion.isFup = false;
+                explosion.boosted = false;
+                explosion.unblockable = false;
+            }
+            blast.transform.localScale *= sizeMultiplier;
+        }
+
+        private static void PlayProvidenceReachEffect(Vector3 point)
+        {
+            try
+            {
+                GameObject prefab = ResolveProvidenceSlingshotPrefab();
+                HookPoint hook = prefab != null ? prefab.GetComponentInChildren<HookPoint>(true) : null;
+                if (hook != null && hook.reachParticle != null)
+                {
+                    GameObject effect = UnityEngine.Object.Instantiate(hook.reachParticle, point, Quaternion.identity);
+                    UnityEngine.Object.Destroy(effect, 5f);
+                }
+            }
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not play Providence hook-point reach effect: " + exception.Message);
+            }
+        }
+
+        private static GameObject ResolveProvidenceSlingshotPrefab()
+        {
+            if (providenceSlingshotPrefab != null)
+                return providenceSlingshotPrefab;
+            try
+            {
+                providenceSlingshotPrefab = Addressables.LoadAssetAsync<GameObject>(ProvidenceSlingshotAddress).WaitForCompletion();
+            }
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not load Providence hook-point visual: " + exception.Message);
+            }
+            return providenceSlingshotPrefab;
+        }
+
+        private static GameObject ResolveRocketExplosionPrefab()
+        {
+            if (rocketExplosionPrefab != null)
+                return rocketExplosionPrefab;
+
+            Grenade active = UnityEngine.Object.FindObjectsOfType<Grenade>()
+                .FirstOrDefault(grenade => grenade != null && grenade.explosion != null);
+            if (active != null)
+                rocketExplosionPrefab = active.explosion;
+            if (rocketExplosionPrefab == null)
+            {
+                Grenade loaded = Resources.FindObjectsOfTypeAll<Grenade>()
+                    .FirstOrDefault(grenade => grenade != null && grenade.explosion != null);
+                if (loaded != null)
+                    rocketExplosionPrefab = loaded.explosion;
+            }
+            return rocketExplosionPrefab;
         }
 
         private static void PlayDeleteEffect(Vector3 point)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+- Added vanilla-style direct-hit airshot bonuses for primary and green grenades, with configurable damage and explosion size.
+- Added configurable page resets and blue hook-point replacement explosion behavior.
+- Fixed stuck-grenade detonation filtering, extended stuck lifetime, and removed the legacy arc preset.
+- Raised default PIPE DREAM, MOON SHOT, and OUT-SNIPED style rewards.
+
 ## 1.0.2
 
 - Corrected the default enemy damage values: Hideous Mass now takes 85% damage, while Malicious Face uses 100%.
