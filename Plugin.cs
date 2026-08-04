@@ -427,7 +427,7 @@ namespace GrenadeLauncherMod
 
         internal static float Damage => damage?.value ?? 4f;
         internal static float AirshotDamage => airshotDamage?.value ?? 6f;
-        internal static float AirshotExplosionSize => airshotExplosionSize?.value ?? 1f;
+        internal static float AirshotExplosionSize => airshotExplosionSize?.value ?? 0.9f;
         internal static float SpeedMultiplier => speed?.value ?? 1f;
         internal static float UpwardVelocityMultiplier => upwardVelocity?.value ?? 1f;
         internal static float FireInterval => fireInterval?.value ?? 0.6f;
@@ -474,6 +474,7 @@ namespace GrenadeLauncherMod
                 configurator.rootPanel,
                 "Get comfortable with the weapon before changing its settings.");
             AddPageResetButton(configurator.rootPanel, "Reset all pages to default", "resetAllPages", true, configurator);
+            AddPageResetButton(configurator.rootPanel, "Reset this page to default", "resetMainPage", false, configurator);
 
             arcPreset = new StringListField(
                 configurator.rootPanel,
@@ -484,7 +485,7 @@ namespace GrenadeLauncherMod
 
             damage = Slider(configurator, "Damage", "damage", 0f, 10f, 4f, 2);
             airshotDamage = Slider(configurator, "Airshot damage", "airshotDamage", 0f, 20f, 6f, 2);
-            airshotExplosionSize = Slider(configurator, "Airshot explosion size (rocket = 1)", "airshotExplosionSize", 0.1f, 5f, 1f, 2);
+            airshotExplosionSize = Slider(configurator, "Airshot explosion size", "airshotExplosionSize", 0.1f, 5f, 0.9f, 2);
             MigrateDamageDefault();
             speed = Slider(configurator, "Projectile speed multiplier", "speedMultiplier", 0.1f, 3f, 1f, 2);
             upwardVelocity = Slider(configurator, "Upward velocity multiplier", "upwardVelocityMultiplier", 0f, 3f, 1f, 2);
@@ -1746,7 +1747,7 @@ namespace GrenadeLauncherMod
                 damage = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotDamage
                     : PluginSettings.AirshotDamage;
-                sizeMultiplier *= Profile == GrenadeProjectileProfile.GreenContact
+                sizeMultiplier = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotExplosionSize
                     : PluginSettings.AirshotExplosionSize;
             }
