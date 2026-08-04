@@ -521,6 +521,7 @@ namespace GrenadeLauncherMod
             fallbackEyeHeight = Slider(calibration, "Fallback V1 eye height", "fallbackEyeHeight", 0.5f, 10f, 2.9f, 2);
 
             InitializeAlternateSettings(configurator);
+            MigrateAirshotSizeDefaults();
 
             ConfigPanel enemyPanel = new ConfigPanel(
                 configurator.rootPanel,
@@ -715,6 +716,26 @@ namespace GrenadeLauncherMod
                 damage.value = 4f;
 
             defaultsVersion.Value = 1;
+            Plugin.Instance.Config.Save();
+        }
+
+        private static void MigrateAirshotSizeDefaults()
+        {
+            ConfigEntry<int> defaultsVersion = Plugin.Instance.Config.Bind(
+                "Migration",
+                "DefaultsVersion",
+                0,
+                "Internal version used to apply changed defaults once without overwriting later customization.");
+
+            if (defaultsVersion.Value >= 2)
+                return;
+
+            if (Mathf.Approximately(airshotExplosionSize.value, 1f))
+                airshotExplosionSize.value = 0.9f;
+            if (Mathf.Approximately(GreenAirshotExplosionSize, 1f))
+                greenAirshotExplosionSize.value = 1.4f;
+
+            defaultsVersion.Value = 2;
             Plugin.Instance.Config.Save();
         }
     }
