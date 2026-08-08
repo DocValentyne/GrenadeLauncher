@@ -97,7 +97,7 @@ namespace GrenadeLauncherMod
         internal static float BluePointSize => bluePointSize?.value ?? 1f;
         internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
         internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
-        internal static float BlueReplacementForceMultiplier => blueReplacementForce?.value ?? 1.25f;
+        internal static float BlueReplacementForce => blueReplacementForce?.value ?? 12575f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
         internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
@@ -153,7 +153,7 @@ namespace GrenadeLauncherMod
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
             blueReplacementDamage = Slider(blue, "Replacement explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
             blueReplacementExplosionSize = Slider(blue, "Replacement explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
-            blueReplacementForce = Slider(blue, "Replacement enemy launch height (ground slam = 1)", "blueReplacementForce", 0f, 5f, 1.25f, 2);
+            blueReplacementForce = Slider(blue, "Replacement enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 12575f, 0);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
             AddPageResetButton(style, "Reset this page to default", "resetStyleBonuses");
@@ -1266,13 +1266,7 @@ namespace GrenadeLauncherMod
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
 
-            // A normal slam multiplies the shockwave prefab's force by slamForce (minimum 1)
-            // and then by 2.25. Use that minimum normal-slam baseline here.
-            float groundSlamForce = ResolveGroundSlamForce() * 2.25f;
-            // Projectile height is proportional to launch velocity squared, so sqrt(1.25)
-            // produces 1.25 times the final height rather than 1.25 times the velocity.
-            float heightMultiplier = Mathf.Max(0f, PluginSettings.BlueReplacementForceMultiplier);
-            float launchForce = groundSlamForce * Mathf.Sqrt(heightMultiplier);
+            float launchForce = Mathf.Max(0f, PluginSettings.BlueReplacementForce);
             float providenceRadius = 0f;
             PhysicalShockwave[] nativeShockwaves = blast.GetComponentsInChildren<PhysicalShockwave>(true);
             foreach (PhysicalShockwave shockwave in nativeShockwaves)
@@ -1310,6 +1304,14 @@ namespace GrenadeLauncherMod
                 explosion.unblockable = false;
             }
 
+            // The large Sphere_8 is the native enemy-damage layer. Its Explosion component
+            // also produces the blood/audio response. The smaller Sphere_8 (1) is the inner
+            // blue visual we want to retain.
+            Transform outerSphere = blast.GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(item => item != null && item.name == "Sphere_8");
+            if (outerSphere != null)
+                outerSphere.gameObject.SetActive(false);
+
             if (nativeShockwaves.Length == 0)
                 SpawnInvisibleGroundSlamShockwave(point, marker.Damage,
                     providenceRadius > 0f ? providenceRadius : 25f * sizeMultiplier, launchForce);
@@ -1339,27 +1341,19 @@ namespace GrenadeLauncherMod
             return providenceExplosionEffectPrefab;
         }
 
-        private static float ResolveGroundSlamForce()
-        {
-            try
-            {
-                if (playerShockwavePrefab == null)
-                    playerShockwavePrefab = Addressables.LoadAssetAsync<GameObject>(PlayerShockwaveAddress).WaitForCompletion();
-                PhysicalShockwave shockwave = playerShockwavePrefab != null
-                    ? playerShockwavePrefab.GetComponentInChildren<PhysicalShockwave>(true)
-                    : null;
-                if (shockwave != null && shockwave.force > 0f)
-                    return shockwave.force;
-            }
-            catch (Exception exception)
-            {
-                Plugin.LogSource?.LogWarning("Could not read the player ground-slam force: " + exception.Message);
-            }
-            return 100f;
-        }
-
         private static void SpawnInvisibleGroundSlamShockwave(Vector3 point, float damage, float targetSize, float launchForce)
         {
+            if (playerShockwavePrefab == null)
+            {
+                try
+                {
+                    playerShockwavePrefab = Addressables.LoadAssetAsync<GameObject>(PlayerShockwaveAddress).WaitForCompletion();
+                }
+                catch (Exception exception)
+                {
+                    Plugin.LogSource?.LogWarning("Could not load the replacement shockwave prefab: " + exception.Message);
+                }
+            }
             if (playerShockwavePrefab == null)
                 return;
             GameObject mechanics = UnityEngine.Object.Instantiate(playerShockwavePrefab, point, Quaternion.identity);
