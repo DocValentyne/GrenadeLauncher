@@ -1262,6 +1262,7 @@ namespace GrenadeLauncherMod
             GameObject blast = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
             blast.name = "Grenade Launcher Providence Replacement Explosion";
             GrenadeLauncherExplosionMarker marker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
+            blast.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
             marker.BlueHookReplacement = true;
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
@@ -1304,11 +1305,12 @@ namespace GrenadeLauncherMod
                 explosion.unblockable = false;
             }
 
-            // The large Sphere_8 is the native enemy-damage layer. Its Explosion component
-            // also produces the blood/audio response. The smaller Sphere_8 (1) is the inner
-            // blue visual we want to retain.
+            // Keep Providence's small blue inner sphere, but hide the large white outer
+            // sphere.  The prefab names are counterintuitive: the visual named
+            // "Sphere_8" is the inner blue layer in-game, while "Sphere_8 (1)" is the
+            // larger white ring.
             Transform outerSphere = blast.GetComponentsInChildren<Transform>(true)
-                .FirstOrDefault(item => item != null && item.name == "Sphere_8");
+                .FirstOrDefault(item => item != null && item.name == "Sphere_8 (1)");
             if (outerSphere != null)
                 outerSphere.gameObject.SetActive(false);
 
@@ -1357,6 +1359,7 @@ namespace GrenadeLauncherMod
             if (playerShockwavePrefab == null)
                 return;
             GameObject mechanics = UnityEngine.Object.Instantiate(playerShockwavePrefab, point, Quaternion.identity);
+            mechanics.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
             foreach (PhysicalShockwave shockwave in mechanics.GetComponentsInChildren<PhysicalShockwave>(true))
             {
                 shockwave.damage = Mathf.RoundToInt(Mathf.Max(0f, damage) * 10f);

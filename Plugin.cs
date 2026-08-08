@@ -964,6 +964,86 @@ namespace GrenadeLauncherMod
         }
     }
 
+    // The Providence hook-point visual contains a PhysicalShockwave for its launch
+    // effect.  That component routes enemy damage through the normal Enemy hurt path,
+    // which also spawns blood and plays hurt/splatter audio.  Keep the native damage and
+    // knockback, but mark only our replacement shockwaves so those cosmetic responses can
+    // be suppressed without changing ordinary explosions.
+    internal sealed class GrenadeLauncherBlueShockwaveMarker : MonoBehaviour
+    {
+    }
+
+    internal static class GrenadeLauncherBlueShockwaveContext
+    {
+        private static int depth;
+
+        internal static bool Active => depth > 0;
+
+        internal static void Enter() => depth++;
+
+        internal static void Exit()
+        {
+            if (depth > 0)
+                depth--;
+        }
+    }
+
+    [HarmonyPatch(typeof(PhysicalShockwave), "CheckCollision")]
+    internal static class GrenadeLauncherPhysicalShockwavePatch
+    {
+        private static bool Prefix(PhysicalShockwave __instance, out bool __state)
+        {
+            __state = __instance != null &&
+                      __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>() != null;
+            if (__state)
+                GrenadeLauncherBlueShockwaveContext.Enter();
+            return true;
+        }
+
+        private static Exception Finalizer(bool __state, Exception __exception)
+        {
+            if (__state)
+                GrenadeLauncherBlueShockwaveContext.Exit();
+            return __exception;
+        }
+    }
+
+    [HarmonyPatch(typeof(Enemy), "HandleBloodSelection")]
+    internal static class GrenadeLauncherBloodSelectionPatch
+    {
+        private static bool Prefix(ref GameObject __result)
+        {
+            if (!GrenadeLauncherBlueShockwaveContext.Active)
+                return true;
+            __result = null;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Enemy), "ProcessBloodEffects")]
+    internal static class GrenadeLauncherBloodEffectsPatch
+    {
+        private static bool Prefix() => !GrenadeLauncherBlueShockwaveContext.Active;
+    }
+
+    [HarmonyPatch(typeof(Enemy), "PlayHurtSound")]
+    internal static class GrenadeLauncherHurtSoundPatch
+    {
+        private static bool Prefix() => !GrenadeLauncherBlueShockwaveContext.Active;
+    }
+
+    [HarmonyPatch(typeof(Enemy), "BloodExplosion")]
+    internal static class GrenadeLauncherBloodExplosionPatch
+    {
+        private static bool Prefix() => !GrenadeLauncherBlueShockwaveContext.Active;
+    }
+
+    [HarmonyPatch(typeof(BloodsplatterManager), "PlayBloodSound")]
+    internal static class GrenadeLauncherBloodSoundPatch
+    {
+        private static bool Prefix() => !GrenadeLauncherBlueShockwaveContext.Active;
+    }
+
     internal enum GrenadeExplosionMode
     {
         Direct,
