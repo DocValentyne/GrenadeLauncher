@@ -215,16 +215,50 @@ namespace GrenadeLauncherMod
         }
     }
 
-    internal static class SharedRocketFireCooldown
+    internal static class RocketCooldownSync
     {
-        private static float readyAt;
-        internal static bool Ready => CooldownRules.NoWeaponCooldown || Time.time >= readyAt;
-        internal static void Mark(float duration)
+        private static readonly AccessTools.FieldRef<RocketLauncher, float> Cooldown =
+            AccessTools.FieldRefAccess<RocketLauncher, float>("cooldown");
+
+        internal static bool Ready(RocketLauncher launcher) =>
+            CooldownRules.NoWeaponCooldown || launcher == null || Cooldown(launcher) <= 0f;
+
+        internal static void ApplyAfterShot(RocketLauncher firedLauncher, bool grenadeShot)
         {
             if (!CooldownRules.NoWeaponCooldown)
-                readyAt = Mathf.Max(readyAt, Time.time + Mathf.Max(0.05f, duration));
+            {
+                foreach (RocketLauncher launcher in GetPlayerLaunchers())
+                {
+                    if (launcher == null)
+                        continue;
+                    bool launcherIsGrenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
+                    if (grenadeShot || launcherIsGrenade)
+                        Cooldown(launcher) = PluginSettings.FireInterval;
+                }
+                if (!grenadeShot && firedLauncher != null)
+                    Cooldown(firedLauncher) = firedLauncher.rateOfFire;
+            }
         }
-        internal static void Reset() => readyAt = 0f;
+
+        private static IEnumerable<RocketLauncher> GetPlayerLaunchers()
+        {
+            GunControl guns = MonoSingleton<GunControl>.Instance;
+            if (guns != null && guns.allWeapons != null)
+            {
+                foreach (GameObject weapon in guns.allWeapons)
+                {
+                    RocketLauncher launcher = weapon != null
+                        ? weapon.GetComponentInChildren<RocketLauncher>(true)
+                        : null;
+                    if (launcher != null)
+                        yield return launcher;
+                }
+                yield break;
+            }
+
+            foreach (RocketLauncher launcher in UnityEngine.Object.FindObjectsOfType<RocketLauncher>())
+                yield return launcher;
+        }
     }
 
     internal static class CooldownRules
@@ -243,29 +277,23 @@ namespace GrenadeLauncherMod
             internal bool Active;
             internal bool EnteredContext;
             internal bool Executed;
-            internal bool SharedEnforced;
+            internal bool DualWieldDuplicate;
             internal bool NotifyGreenPrimary;
             internal bool NotifyBluePrimary;
             internal float RateOfFire;
-            internal float SharedInterval;
         }
 
         private static bool Prefix(RocketLauncher __instance, out State __state)
         {
             bool grenadeMode = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(__instance);
-            bool enforceShared = Plugin.Instance != null && Plugin.Instance.AnyGrenadeModeEnabled;
             WeaponIdentifier weaponId = WeaponId(__instance);
             bool dualWieldDuplicate = weaponId != null && weaponId.duplicate;
             __state = new State
             {
                 Active = grenadeMode,
-                SharedEnforced = enforceShared && !dualWieldDuplicate,
+                DualWieldDuplicate = dualWieldDuplicate,
                 RateOfFire = __instance.rateOfFire,
-                SharedInterval = grenadeMode ? PluginSettings.FireInterval : __instance.rateOfFire
             };
-
-            if (__state.SharedEnforced && !SharedRocketFireCooldown.Ready)
-                return false;
             __state.Executed = true;
 
             if (!__state.Active)
@@ -285,8 +313,8 @@ namespace GrenadeLauncherMod
         private static Exception Finalizer(RocketLauncher __instance, State __state, Exception __exception)
         {
             Restore(__instance, __state);
-            if (__exception == null && __state.Executed && __state.SharedEnforced)
-                SharedRocketFireCooldown.Mark(__state.SharedInterval);
+            if (__exception == null && __state.Executed && !__state.DualWieldDuplicate)
+                RocketCooldownSync.ApplyAfterShot(__instance, __state.Active);
             if (__exception == null && __state.NotifyGreenPrimary)
                 AlternateFireController.OnGreenPrimaryFired();
             if (__exception == null && __state.NotifyBluePrimary)
@@ -847,41 +875,6 @@ namespace GrenadeLauncherMod
     }
 
     [HarmonyPatch(typeof(Grenade), nameof(Grenade.Collision), new[] { typeof(Collider), typeof(Vector3) })]
-    internal static class PinkHookVanillaRocketCollisionPatch
-    {
-        private static void Prefix(Grenade __instance, Collider other)
-        {
-            if (__instance == null || !__instance.rocket || __instance.enemy)
-                return;
-            EnemyIdentifier target = GrenadeLauncherProjectile.TryGetLivingEnemy(other);
-            if (!PinkHookAirshotTarget.IsActive(target))
-                return;
-            PinkHookVanillaRocketTarget tracker = __instance.GetComponent<PinkHookVanillaRocketTarget>();
-            if (tracker == null)
-                tracker = __instance.gameObject.AddComponent<PinkHookVanillaRocketTarget>();
-            tracker.Target = target;
-        }
-    }
-
-    [HarmonyPatch(typeof(Grenade), nameof(Grenade.Explode))]
-    internal static class PinkHookVanillaRocketExplosionPatch
-    {
-        private static void Prefix(Grenade __instance, bool super, ref float sizeMultiplier)
-        {
-            if (__instance == null || !__instance.rocket || __instance.enemy || !super)
-                return;
-            PinkHookVanillaRocketTarget tracker = __instance.GetComponent<PinkHookVanillaRocketTarget>();
-            if (tracker != null && PinkHookAirshotTarget.IsActive(tracker.Target))
-                sizeMultiplier *= PluginSettings.BlueLaunchedAirshotExplosionSizeMultiplier;
-        }
-    }
-
-    internal sealed class PinkHookVanillaRocketTarget : MonoBehaviour
-    {
-        internal EnemyIdentifier Target;
-    }
-
-    [HarmonyPatch(typeof(Grenade), nameof(Grenade.Collision), new[] { typeof(Collider), typeof(Vector3) })]
     internal static class GrenadeCollisionPatch
     {
         private static bool Prefix(Grenade __instance, Collider other, Vector3 velocity)
@@ -1018,46 +1011,6 @@ namespace GrenadeLauncherMod
     // be suppressed without changing ordinary explosions.
     internal sealed class GrenadeLauncherBlueShockwaveMarker : MonoBehaviour
     {
-        internal bool MarksPinkLaunchAirshotTargets;
-    }
-
-    internal sealed class PinkHookAirshotTarget : MonoBehaviour
-    {
-        private const float MinimumAirTime = 0.2f;
-        private const float MaximumLifetime = 5f;
-        private EnemyIdentifier enemy;
-        private float canExpireAt;
-        private float expiresAt;
-
-        internal static void Mark(EnemyIdentifier target)
-        {
-            if (target == null || target.dead)
-                return;
-            PinkHookAirshotTarget marker = target.GetComponent<PinkHookAirshotTarget>();
-            if (marker == null)
-                marker = target.gameObject.AddComponent<PinkHookAirshotTarget>();
-            marker.enemy = target;
-            marker.canExpireAt = Time.time + MinimumAirTime;
-            marker.expiresAt = Time.time + MaximumLifetime;
-        }
-
-        internal static bool IsActive(EnemyIdentifier target)
-        {
-            PinkHookAirshotTarget marker = target != null ? target.GetComponent<PinkHookAirshotTarget>() : null;
-            return marker != null && marker.enabled && Time.time <= marker.expiresAt;
-        }
-
-        private void Awake()
-        {
-            enemy = GetComponent<EnemyIdentifier>();
-        }
-
-        private void Update()
-        {
-            if (enemy == null || enemy.dead || Time.time > expiresAt ||
-                (Time.time >= canExpireAt && enemy.gce != null && enemy.gce.onGround))
-                Destroy(this);
-        }
     }
 
     internal static class GrenadeLauncherBlueShockwaveContext
@@ -1078,29 +1031,18 @@ namespace GrenadeLauncherMod
     [HarmonyPatch(typeof(PhysicalShockwave), "CheckCollision")]
     internal static class GrenadeLauncherPhysicalShockwavePatch
     {
-        private struct State
+        private static bool Prefix(PhysicalShockwave __instance, out bool __state)
         {
-            internal bool Active;
-        }
-
-        private static bool Prefix(PhysicalShockwave __instance, Collider col, out State __state)
-        {
-            GrenadeLauncherBlueShockwaveMarker marker = __instance != null
-                ? __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>()
-                : null;
-            __state = new State { Active = marker != null };
-            if (__state.Active)
-            {
+            __state = __instance != null &&
+                      __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>() != null;
+            if (__state)
                 GrenadeLauncherBlueShockwaveContext.Enter();
-                if (marker.MarksPinkLaunchAirshotTargets)
-                    PinkHookAirshotTarget.Mark(GrenadeLauncherProjectile.TryGetLivingEnemy(col));
-            }
             return true;
         }
 
-        private static Exception Finalizer(State __state, Exception __exception)
+        private static Exception Finalizer(bool __state, Exception __exception)
         {
-            if (__state.Active)
+            if (__state)
                 GrenadeLauncherBlueShockwaveContext.Exit();
             return __exception;
         }
@@ -1981,8 +1923,6 @@ namespace GrenadeLauncherMod
                 sizeMultiplier = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotExplosionSize
                     : PluginSettings.AirshotExplosionSize;
-                if (PinkHookAirshotTarget.IsActive(directEnemy))
-                    sizeMultiplier *= PluginSettings.BlueLaunchedAirshotExplosionSizeMultiplier;
             }
 
             if (longRangeStyle == GrenadeLongRangeStyle.PipeDream)

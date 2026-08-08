@@ -50,7 +50,6 @@ namespace GrenadeLauncherMod
         private static FloatSliderField blueReplacementDamage;
         private static FloatSliderField blueReplacementExplosionSize;
         private static FloatSliderField blueReplacementForce;
-        private static FloatSliderField blueLaunchedAirshotExplosionSizeMultiplier;
         private static FloatSliderField pipeDreamDistance;
         private static FloatSliderField moonShotDistance;
         private static FloatSliderField pipeDreamStylePoints;
@@ -99,8 +98,6 @@ namespace GrenadeLauncherMod
         internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
         internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
         internal static float BlueReplacementForce => blueReplacementForce?.value ?? 12575f;
-        internal static float BlueLaunchedAirshotExplosionSizeMultiplier =>
-            blueLaunchedAirshotExplosionSizeMultiplier?.value ?? 1.25f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
         internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
@@ -157,7 +154,6 @@ namespace GrenadeLauncherMod
             blueReplacementDamage = Slider(blue, "Pink explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
             blueReplacementExplosionSize = Slider(blue, "Pink explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
             blueReplacementForce = Slider(blue, "Pink explosion enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 12575f, 0);
-            blueLaunchedAirshotExplosionSizeMultiplier = Slider(blue, "Pink-launch airshot size multiplier", "blueLaunchedAirshotExplosionSizeMultiplier", 0.1f, 5f, 1.25f, 2);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
             AddPageResetButton(style, "Reset this page to default", "resetStyleBonuses");
@@ -415,8 +411,7 @@ namespace GrenadeLauncherMod
                 return;
 
             bool continuingGreenVolley = launcher.variation == 1 && Time.frameCount == greenVolleyFrame;
-            bool duplicateSharedCooldownException = continuingGreenVolley && dualWieldDuplicate;
-            if (!SharedRocketFireCooldown.Ready && !duplicateSharedCooldownException)
+            if (!RocketCooldownSync.Ready(launcher) && !continuingGreenVolley)
                 return;
             if (launcher.variation == 1 && (CooldownRules.NoWeaponCooldown || Time.time >= greenReadyAt || continuingGreenVolley))
             {
@@ -496,7 +491,6 @@ namespace GrenadeLauncherMod
             greenVolleyFrame = -1;
             DelayedGreenShot.CancelAll();
             GrenadeAlternateUpdatePatch.ResetAudioTracking();
-            SharedRocketFireCooldown.Reset();
         }
 
         internal static void FireDelayedGreen(RocketLauncher launcher)
@@ -1288,8 +1282,7 @@ namespace GrenadeLauncherMod
             GameObject blast = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
             blast.name = "Grenade Launcher Providence Replacement Explosion";
             GrenadeLauncherExplosionMarker marker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
-            GrenadeLauncherBlueShockwaveMarker shockwaveMarker = blast.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
-            shockwaveMarker.MarksPinkLaunchAirshotTargets = true;
+            blast.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
             marker.BlueHookReplacement = true;
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
@@ -1394,8 +1387,7 @@ namespace GrenadeLauncherMod
             if (playerShockwavePrefab == null)
                 return;
             GameObject mechanics = UnityEngine.Object.Instantiate(playerShockwavePrefab, point, Quaternion.identity);
-            GrenadeLauncherBlueShockwaveMarker shockwaveMarker = mechanics.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
-            shockwaveMarker.MarksPinkLaunchAirshotTargets = true;
+            mechanics.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
             foreach (PhysicalShockwave shockwave in mechanics.GetComponentsInChildren<PhysicalShockwave>(true))
             {
                 shockwave.damage = Mathf.RoundToInt(Mathf.Max(0f, damage) * 10f);
