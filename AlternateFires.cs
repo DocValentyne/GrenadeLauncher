@@ -322,6 +322,9 @@ namespace GrenadeLauncherMod
     {
         private static readonly AccessTools.FieldRef<RocketLauncher, WeaponIdentifier> WeaponId =
             AccessTools.FieldRefAccess<RocketLauncher, WeaponIdentifier>("wid");
+        private static readonly AccessTools.FieldRef<RocketLauncher, TimeSince> SinceEquipped =
+            AccessTools.FieldRefAccess<RocketLauncher, TimeSince>("sinceEquipped");
+        private const float EquipHeldAltDelay = 0.25f;
         private static float greenReadyAt;
         private static float greenDisplayReadyAt;
         private static float greenDisplayStartedAt;
@@ -386,6 +389,12 @@ namespace GrenadeLauncherMod
         internal static void TryFire(RocketLauncher launcher, bool altPressedThisFrame)
         {
             if (launcher == null || (GameStateManager.Instance != null && GameStateManager.Instance.PlayerInputLocked))
+                return;
+
+            // Match the rocket launcher's held-alt behavior: an input held before this
+            // launcher finishes drawing cannot fire its alternate immediately. A fresh
+            // press after equipping is still allowed through at once.
+            if (!altPressedThisFrame && (float)SinceEquipped(launcher) < EquipHeldAltDelay)
                 return;
 
             // The no-cooldown cheat makes the normal held-input loop ready every frame.
