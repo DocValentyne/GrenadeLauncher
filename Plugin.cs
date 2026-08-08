@@ -219,25 +219,46 @@ namespace GrenadeLauncherMod
     {
         private static readonly AccessTools.FieldRef<RocketLauncher, float> Cooldown =
             AccessTools.FieldRefAccess<RocketLauncher, float>("cooldown");
+        private static RocketLauncher pendingFiredLauncher;
+        private static bool pendingGrenadeShot;
+        private static bool pending;
 
         internal static bool Ready(RocketLauncher launcher) =>
             CooldownRules.NoWeaponCooldown || launcher == null || Cooldown(launcher) <= 0f;
 
         internal static void ApplyAfterShot(RocketLauncher firedLauncher, bool grenadeShot)
         {
-            if (!CooldownRules.NoWeaponCooldown)
+            if (CooldownRules.NoWeaponCooldown)
+                return;
+
+            // RocketLauncher writes its own cooldown after Shoot returns. Queue this
+            // work for LateUpdate so a vanilla rocket cannot overwrite the grenade
+            // launcher's configured interval with its own 1-second cooldown.
+            pendingFiredLauncher = firedLauncher;
+            pendingGrenadeShot = grenadeShot;
+            pending = true;
+        }
+
+        internal static void FlushPending()
+        {
+            if (!pending || CooldownRules.NoWeaponCooldown)
+                return;
+
+            RocketLauncher firedLauncher = pendingFiredLauncher;
+            bool grenadeShot = pendingGrenadeShot;
+            pending = false;
+            pendingFiredLauncher = null;
+
+            foreach (RocketLauncher launcher in GetPlayerLaunchers())
             {
-                foreach (RocketLauncher launcher in GetPlayerLaunchers())
-                {
-                    if (launcher == null)
-                        continue;
-                    bool launcherIsGrenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
-                    if (grenadeShot || launcherIsGrenade)
-                        Cooldown(launcher) = PluginSettings.FireInterval;
-                }
-                if (!grenadeShot && firedLauncher != null)
-                    Cooldown(firedLauncher) = firedLauncher.rateOfFire;
+                if (launcher == null)
+                    continue;
+                bool launcherIsGrenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
+                if (grenadeShot || launcherIsGrenade)
+                    Cooldown(launcher) = PluginSettings.FireInterval;
             }
+            if (!grenadeShot && firedLauncher != null)
+                Cooldown(firedLauncher) = firedLauncher.rateOfFire;
         }
 
         private static IEnumerable<RocketLauncher> GetPlayerLaunchers()

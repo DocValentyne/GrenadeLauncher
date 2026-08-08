@@ -1569,7 +1569,10 @@ namespace GrenadeLauncherMod
 
             SphereCollider source = GetComponent<SphereCollider>();
             hitscanCollider = hitbox.AddComponent<SphereCollider>();
-            hitscanCollider.isTrigger = true;
+            // Piercing revolver and rail beams ignore trigger colliders. This stays
+            // inactive until the hook point turns pink, so it cannot obstruct shots
+            // or player movement during ordinary blue-hookpoint use.
+            hitscanCollider.isTrigger = false;
             hitscanCollider.radius = source != null ? source.radius : 1f;
             hitscanCollider.center = source != null ? source.center : Vector3.zero;
             hitscanCollider.enabled = false;
@@ -1686,6 +1689,8 @@ namespace GrenadeLauncherMod
                 CleanupAll();
             lastGrenadeMode = enabled;
         }
+
+        private void LateUpdate() => RocketCooldownSync.FlushPending();
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => CleanupAll();
 
