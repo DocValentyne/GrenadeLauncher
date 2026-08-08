@@ -1083,7 +1083,7 @@ namespace GrenadeLauncherMod
             internal bool Active;
         }
 
-        private static bool Prefix(PhysicalShockwave __instance, Collider other, out State __state)
+        private static bool Prefix(PhysicalShockwave __instance, Collider col, out State __state)
         {
             GrenadeLauncherBlueShockwaveMarker marker = __instance != null
                 ? __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>()
@@ -1093,7 +1093,7 @@ namespace GrenadeLauncherMod
             {
                 GrenadeLauncherBlueShockwaveContext.Enter();
                 if (marker.MarksPinkLaunchAirshotTargets)
-                    PinkHookAirshotTarget.Mark(GrenadeLauncherProjectile.TryGetLivingEnemy(other));
+                    PinkHookAirshotTarget.Mark(GrenadeLauncherProjectile.TryGetLivingEnemy(col));
             }
             return true;
         }
