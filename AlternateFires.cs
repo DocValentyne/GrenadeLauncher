@@ -1556,6 +1556,7 @@ namespace GrenadeLauncherMod
         private bool pink;
         private bool consumed;
         private SphereCollider hitscanCollider;
+        private SphereCollider piercingHitscanCollider;
 
         internal bool IsPink => pink && !consumed;
 
@@ -1568,14 +1569,25 @@ namespace GrenadeLauncherMod
             hitbox.transform.SetParent(transform, false);
 
             SphereCollider source = GetComponent<SphereCollider>();
-            hitscanCollider = hitbox.AddComponent<SphereCollider>();
-            // Piercing revolver and rail beams ignore trigger colliders. This stays
-            // inactive until the hook point turns pink, so it cannot obstruct shots
-            // or player movement during ordinary blue-hookpoint use.
-            hitscanCollider.isTrigger = false;
-            hitscanCollider.radius = source != null ? source.radius : 1f;
-            hitscanCollider.center = source != null ? source.center : Vector3.zero;
-            hitscanCollider.enabled = false;
+            hitscanCollider = CreateHitscanCollider(hitbox, source);
+
+            // Charged/slab revolver shots and railcannons cast against ULTRAKILL's
+            // piercing mask instead of the ordinary enemy-trigger mask. Give them a
+            // second trigger-only target; layer 24 is included by that vanilla mask.
+            GameObject piercingHitbox = new GameObject("Pink Hookpoint Piercing Hitscan Target");
+            piercingHitbox.layer = 24;
+            piercingHitbox.transform.SetParent(transform, false);
+            piercingHitscanCollider = CreateHitscanCollider(piercingHitbox, source);
+        }
+
+        private static SphereCollider CreateHitscanCollider(GameObject target, SphereCollider source)
+        {
+            SphereCollider collider = target.AddComponent<SphereCollider>();
+            collider.isTrigger = true;
+            collider.radius = source != null ? source.radius : 1f;
+            collider.center = source != null ? source.center : Vector3.zero;
+            collider.enabled = false;
+            return collider;
         }
 
         private void Update()
@@ -1597,6 +1609,8 @@ namespace GrenadeLauncherMod
             pink = true;
             if (hitscanCollider != null)
                 hitscanCollider.enabled = true;
+            if (piercingHitscanCollider != null)
+                piercingHitscanCollider.enabled = true;
             foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
             {
                 if (renderer == null)
@@ -1666,7 +1680,11 @@ namespace GrenadeLauncherMod
     [HarmonyPatch(typeof(NewMovement), nameof(NewMovement.Respawn))]
     internal static class GrenadeLauncherRespawnCooldownPatch
     {
-        private static void Postfix() => AlternateFireController.Reset();
+        private static void Postfix()
+        {
+            AlternateFireController.Reset();
+            RocketCooldownSync.Reset();
+        }
     }
 
     internal sealed class AlternateFireRuntime : MonoBehaviour
@@ -1690,8 +1708,6 @@ namespace GrenadeLauncherMod
             lastGrenadeMode = enabled;
         }
 
-        private void LateUpdate() => RocketCooldownSync.FlushPending();
-
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => CleanupAll();
 
         internal static void CleanupAll()
@@ -1699,6 +1715,7 @@ namespace GrenadeLauncherMod
             HookPointManager.Cleanup();
             GelSystem.Cleanup();
             AlternateFireController.Reset();
+            RocketCooldownSync.Reset();
             AlternateFireInputContext.Depth = 0;
             AlternateFireInputContext.SuppressedAction = null;
             GelSpawnContext.Depth = 0;

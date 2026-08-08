@@ -219,9 +219,8 @@ namespace GrenadeLauncherMod
     {
         private static readonly AccessTools.FieldRef<RocketLauncher, float> Cooldown =
             AccessTools.FieldRefAccess<RocketLauncher, float>("cooldown");
-        private static RocketLauncher pendingFiredLauncher;
-        private static bool pendingGrenadeShot;
-        private static bool pending;
+        private static float standardReadyAt;
+        private static float grenadeReadyAt;
 
         internal static bool Ready(RocketLauncher launcher) =>
             CooldownRules.NoWeaponCooldown || launcher == null || Cooldown(launcher) <= 0f;
@@ -231,60 +230,45 @@ namespace GrenadeLauncherMod
             if (CooldownRules.NoWeaponCooldown)
                 return;
 
-            // RocketLauncher writes its own cooldown after Shoot returns. Queue this
-            // work for LateUpdate so a vanilla rocket cannot overwrite the grenade
-            // launcher's configured interval with its own 1-second cooldown.
-            pendingFiredLauncher = firedLauncher;
-            pendingGrenadeShot = grenadeShot;
-            pending = true;
+            float grenadeInterval = Mathf.Max(0f, PluginSettings.FireInterval);
+            grenadeReadyAt = Time.time + grenadeInterval;
+            standardReadyAt = Time.time + (grenadeShot
+                ? grenadeInterval
+                : Mathf.Max(0f, firedLauncher != null ? firedLauncher.rateOfFire : 1f));
         }
 
-        internal static void FlushPending()
+        internal static void ApplyWhenEquipped(RocketLauncher launcher)
         {
-            if (!pending || CooldownRules.NoWeaponCooldown)
+            if (launcher == null)
                 return;
 
-            RocketLauncher firedLauncher = pendingFiredLauncher;
-            bool grenadeShot = pendingGrenadeShot;
-            pending = false;
-            pendingFiredLauncher = null;
-
-            foreach (RocketLauncher launcher in GetPlayerLaunchers())
+            if (CooldownRules.NoWeaponCooldown)
+                Cooldown(launcher) = 0f;
+            else
             {
-                if (launcher == null)
-                    continue;
-                bool launcherIsGrenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
-                if (grenadeShot || launcherIsGrenade)
-                    Cooldown(launcher) = PluginSettings.FireInterval;
+                bool grenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
+                float readyAt = grenade ? grenadeReadyAt : standardReadyAt;
+                Cooldown(launcher) = Mathf.Max(0f, readyAt - Time.time);
             }
-            if (!grenadeShot && firedLauncher != null)
-                Cooldown(firedLauncher) = firedLauncher.rateOfFire;
         }
 
-        private static IEnumerable<RocketLauncher> GetPlayerLaunchers()
+        internal static void Reset()
         {
-            GunControl guns = MonoSingleton<GunControl>.Instance;
-            if (guns != null && guns.allWeapons != null)
-            {
-                foreach (GameObject weapon in guns.allWeapons)
-                {
-                    RocketLauncher launcher = weapon != null
-                        ? weapon.GetComponentInChildren<RocketLauncher>(true)
-                        : null;
-                    if (launcher != null)
-                        yield return launcher;
-                }
-                yield break;
-            }
-
-            foreach (RocketLauncher launcher in UnityEngine.Object.FindObjectsOfType<RocketLauncher>())
-                yield return launcher;
+            standardReadyAt = 0f;
+            grenadeReadyAt = 0f;
         }
     }
 
     internal static class CooldownRules
     {
         internal static bool NoWeaponCooldown => ULTRAKILL.Cheats.NoWeaponCooldown.NoCooldown;
+    }
+
+    [HarmonyPatch(typeof(RocketLauncher), "OnEnable")]
+    internal static class RocketLauncherEquipCooldownPatch
+    {
+        [HarmonyPriority(Priority.Last)]
+        private static void Postfix(RocketLauncher __instance) => RocketCooldownSync.ApplyWhenEquipped(__instance);
     }
 
     [HarmonyPatch(typeof(RocketLauncher), nameof(RocketLauncher.Shoot))]
