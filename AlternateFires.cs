@@ -1260,25 +1260,28 @@ namespace GrenadeLauncherMod
 
             float sizeMultiplier = Mathf.Max(0.1f, PluginSettings.BlueReplacementExplosionSize);
             GameObject blast = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
+            blast.name = "Grenade Launcher Providence Replacement Explosion";
             GrenadeLauncherExplosionMarker marker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
             marker.BlueHookReplacement = true;
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
 
-            float groundSlamForce = ResolveGroundSlamForce();
+            // A normal slam multiplies the shockwave prefab's force by slamForce (minimum 1)
+            // and then by 2.25. Use that minimum normal-slam baseline here.
+            float groundSlamForce = ResolveGroundSlamForce() * 2.25f;
             // Projectile height is proportional to launch velocity squared, so sqrt(1.25)
             // produces 1.25 times the final height rather than 1.25 times the velocity.
             float heightMultiplier = Mathf.Max(0f, PluginSettings.BlueReplacementForceMultiplier);
             float launchForce = groundSlamForce * Mathf.Sqrt(heightMultiplier);
-            bool configuredNativeShockwave = false;
+            float providenceRadius = 0f;
             PhysicalShockwave[] nativeShockwaves = blast.GetComponentsInChildren<PhysicalShockwave>(true);
             foreach (PhysicalShockwave shockwave in nativeShockwaves)
             {
                 if (shockwave == null)
                     continue;
-                configuredNativeShockwave = true;
                 shockwave.damage = Mathf.RoundToInt(marker.Damage * 10f);
                 shockwave.maxSize *= sizeMultiplier;
+                providenceRadius = Mathf.Max(providenceRadius, shockwave.maxSize);
                 shockwave.force = launchForce;
                 shockwave.hasHurtPlayer = true;
                 shockwave.enemy = false;
@@ -1289,6 +1292,7 @@ namespace GrenadeLauncherMod
             {
                 if (explosion == null)
                     continue;
+                providenceRadius = Mathf.Max(providenceRadius, explosion.maxSize * sizeMultiplier);
                 explosion.sourceWeapon = null;
                 // Providence's PhysicalShockwave owns the mechanics.  Any Explosion on the
                 // visual object is kept cosmetic to avoid duplicate damage and radial force.
@@ -1306,8 +1310,13 @@ namespace GrenadeLauncherMod
                 explosion.unblockable = false;
             }
 
-            if (!configuredNativeShockwave)
-                SpawnInvisibleGroundSlamShockwave(point, marker.Damage, sizeMultiplier, launchForce);
+            if (nativeShockwaves.Length == 0)
+                SpawnInvisibleGroundSlamShockwave(point, marker.Damage,
+                    providenceRadius > 0f ? providenceRadius : 25f * sizeMultiplier, launchForce);
+
+            // This is a disabled child inside the Providence hookpoint prefab. Instantiate it
+            // inactive so all damage fields can be neutralized, then activate only the effect.
+            blast.SetActive(true);
         }
 
         private static GameObject ResolveProvidenceExplosionEffectPrefab()
@@ -1317,61 +1326,17 @@ namespace GrenadeLauncherMod
             try
             {
                 GameObject prefab = ResolveProvidenceSlingshotPrefab();
-                HookPoint hook = prefab != null ? prefab.GetComponentInChildren<HookPoint>(true) : null;
-                if (hook == null || hook.onReach == null)
-                    return null;
-
-                List<GameObject> candidates = new List<GameObject>();
-                if (hook.onReach.toActivateObjects != null)
-                    candidates.AddRange(hook.onReach.toActivateObjects.Where(item => item != null));
-                if (hook.onReach.onActivate != null)
-                {
-                    int count = hook.onReach.onActivate.GetPersistentEventCount();
-                    for (int i = 0; i < count; i++)
-                    {
-                        UnityEngine.Object target = hook.onReach.onActivate.GetPersistentTarget(i);
-                        Component component = target as Component;
-                        GameObject targetObject = target as GameObject;
-                        if (component != null)
-                            candidates.Add(component.gameObject);
-                        else if (targetObject != null)
-                            candidates.Add(targetObject);
-                    }
-                }
-
-                List<GameObject> expanded = new List<GameObject>(candidates);
-                FieldInfo instantiateSource = AccessTools.Field(typeof(InstantiateObject), "source");
-                foreach (GameObject candidate in candidates)
-                foreach (InstantiateObject instantiator in candidate.GetComponentsInChildren<InstantiateObject>(true))
-                {
-                    GameObject source = instantiator != null
-                        ? instantiateSource?.GetValue(instantiator) as GameObject
-                        : null;
-                    if (source != null)
-                        expanded.Add(source);
-                }
-
-                providenceExplosionEffectPrefab = expanded
-                    .Distinct()
-                    .OrderByDescending(ScoreProvidenceEffectCandidate)
-                    .FirstOrDefault(candidate => ScoreProvidenceEffectCandidate(candidate) > 0);
+                Transform effect = prefab != null
+                    ? prefab.GetComponentsInChildren<Transform>(true)
+                        .FirstOrDefault(item => item != null && item.name == "Explosion Lightning - No Lightning")
+                    : null;
+                providenceExplosionEffectPrefab = effect != null ? effect.gameObject : null;
             }
             catch (Exception exception)
             {
                 Plugin.LogSource?.LogWarning("Could not resolve Providence hook-point explosion effect: " + exception.Message);
             }
             return providenceExplosionEffectPrefab;
-        }
-
-        private static int ScoreProvidenceEffectCandidate(GameObject candidate)
-        {
-            if (candidate == null)
-                return 0;
-            int score = candidate.GetComponentsInChildren<PhysicalShockwave>(true).Length * 1000;
-            score += candidate.GetComponentsInChildren<Explosion>(true).Length * 500;
-            score += candidate.GetComponentsInChildren<ParticleSystem>(true).Length * 10;
-            score += candidate.GetComponentsInChildren<AudioSource>(true).Length;
-            return score;
         }
 
         private static float ResolveGroundSlamForce()
@@ -1393,7 +1358,7 @@ namespace GrenadeLauncherMod
             return 100f;
         }
 
-        private static void SpawnInvisibleGroundSlamShockwave(Vector3 point, float damage, float sizeMultiplier, float launchForce)
+        private static void SpawnInvisibleGroundSlamShockwave(Vector3 point, float damage, float targetSize, float launchForce)
         {
             if (playerShockwavePrefab == null)
                 return;
@@ -1401,7 +1366,7 @@ namespace GrenadeLauncherMod
             foreach (PhysicalShockwave shockwave in mechanics.GetComponentsInChildren<PhysicalShockwave>(true))
             {
                 shockwave.damage = Mathf.RoundToInt(Mathf.Max(0f, damage) * 10f);
-                shockwave.maxSize *= sizeMultiplier;
+                shockwave.maxSize = Mathf.Max(0.1f, targetSize);
                 shockwave.force = launchForce;
                 shockwave.hasHurtPlayer = true;
                 shockwave.enemy = false;

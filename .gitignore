@@ -9,6 +9,7 @@ Directory.Build.props
 # Development-only material
 backups/
 research/
+tools/
 startup-trace.txt
 
 # IDE and operating-system files
