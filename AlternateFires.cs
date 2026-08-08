@@ -1314,6 +1314,14 @@ namespace GrenadeLauncherMod
             if (outerSphere != null)
                 outerSphere.gameObject.SetActive(false);
 
+            // Providence's effect also carries a separate "BS Head" particle/audio child.
+            // It is the blood burst used by the original boss effect, rather than part of
+            // the blue hook-point explosion, so omit it from the player-created version.
+            Transform bloodBurst = blast.GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(item => item != null && item.name == "BS Head");
+            if (bloodBurst != null)
+                bloodBurst.gameObject.SetActive(false);
+
             if (nativeShockwaves.Length == 0)
                 SpawnInvisibleGroundSlamShockwave(point, marker.Damage,
                     providenceRadius > 0f ? providenceRadius : 25f * sizeMultiplier, launchForce);
