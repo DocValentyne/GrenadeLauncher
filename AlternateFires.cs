@@ -1606,7 +1606,22 @@ namespace GrenadeLauncherMod
             {
                 if (renderer == null)
                     continue;
-                renderer.enabled = false;
+                renderer.enabled = true;
+                if (renderer is SpriteRenderer sprite)
+                {
+                    sprite.color = Pink;
+                    continue;
+                }
+
+                Shader shader = Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
+                Material material = new Material(shader);
+                material.color = Pink;
+                if (material.HasProperty("_EmissionColor"))
+                {
+                    material.EnableKeyword("_EMISSION");
+                    material.SetColor("_EmissionColor", PinkEmission);
+                }
+                renderer.material = material;
             }
             foreach (Light light in GetComponentsInChildren<Light>(true))
             {
@@ -1620,28 +1635,6 @@ namespace GrenadeLauncherMod
                 particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
 
-            GameObject core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            core.name = "Grenade Launcher Pink Hookpoint Core";
-            core.layer = 22;
-            core.transform.SetParent(transform, false);
-            core.transform.localPosition = Vector3.zero;
-            core.transform.localScale = Vector3.one * 1.25f;
-            Collider coreCollider = core.GetComponent<Collider>();
-            if (coreCollider != null)
-                UnityEngine.Object.Destroy(coreCollider);
-            Renderer coreRenderer = core.GetComponent<Renderer>();
-            if (coreRenderer != null)
-            {
-                Shader shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
-                Material material = new Material(shader);
-                material.color = Pink;
-                if (material.HasProperty("_EmissionColor"))
-                {
-                    material.EnableKeyword("_EMISSION");
-                    material.SetColor("_EmissionColor", PinkEmission);
-                }
-                coreRenderer.material = material;
-            }
         }
     }
 
