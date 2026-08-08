@@ -1563,6 +1563,7 @@ namespace GrenadeLauncherMod
         private static readonly Color PinkEmission = new Color(1f, 0f, 0.2f, 1f) * 3f;
         private bool pink;
         private bool consumed;
+        private SphereCollider hitscanCollider;
 
         internal bool IsPink => pink && !consumed;
 
@@ -1575,10 +1576,11 @@ namespace GrenadeLauncherMod
             hitbox.transform.SetParent(transform, false);
 
             SphereCollider source = GetComponent<SphereCollider>();
-            SphereCollider collider = hitbox.AddComponent<SphereCollider>();
-            collider.isTrigger = true;
-            collider.radius = source != null ? source.radius : 1f;
-            collider.center = source != null ? source.center : Vector3.zero;
+            hitscanCollider = hitbox.AddComponent<SphereCollider>();
+            hitscanCollider.isTrigger = true;
+            hitscanCollider.radius = source != null ? source.radius : 1f;
+            hitscanCollider.center = source != null ? source.center : Vector3.zero;
+            hitscanCollider.enabled = false;
         }
 
         private void Update()
@@ -1598,24 +1600,13 @@ namespace GrenadeLauncherMod
         private void TurnPink()
         {
             pink = true;
+            if (hitscanCollider != null)
+                hitscanCollider.enabled = true;
             foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
             {
                 if (renderer == null)
                     continue;
-                foreach (Material material in renderer.materials)
-                {
-                    if (material == null)
-                        continue;
-                    if (material.HasProperty("_Color"))
-                        material.color = Pink;
-                    if (material.HasProperty("_BaseColor"))
-                        material.SetColor("_BaseColor", Pink);
-                    if (material.HasProperty("_EmissionColor"))
-                    {
-                        material.EnableKeyword("_EMISSION");
-                        material.SetColor("_EmissionColor", PinkEmission);
-                    }
-                }
+                renderer.enabled = false;
             }
             foreach (Light light in GetComponentsInChildren<Light>(true))
             {
@@ -1626,8 +1617,30 @@ namespace GrenadeLauncherMod
             {
                 if (particles == null)
                     continue;
-                ParticleSystem.MainModule main = particles.main;
-                main.startColor = Pink;
+                particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+
+            GameObject core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            core.name = "Grenade Launcher Pink Hookpoint Core";
+            core.layer = 22;
+            core.transform.SetParent(transform, false);
+            core.transform.localPosition = Vector3.zero;
+            core.transform.localScale = Vector3.one * 1.25f;
+            Collider coreCollider = core.GetComponent<Collider>();
+            if (coreCollider != null)
+                UnityEngine.Object.Destroy(coreCollider);
+            Renderer coreRenderer = core.GetComponent<Renderer>();
+            if (coreRenderer != null)
+            {
+                Shader shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+                Material material = new Material(shader);
+                material.color = Pink;
+                if (material.HasProperty("_EmissionColor"))
+                {
+                    material.EnableKeyword("_EMISSION");
+                    material.SetColor("_EmissionColor", PinkEmission);
+                }
+                coreRenderer.material = material;
             }
         }
     }
@@ -1635,10 +1648,10 @@ namespace GrenadeLauncherMod
     [HarmonyPatch(typeof(RevolverBeam), nameof(RevolverBeam.ExecuteHits))]
     internal static class PinkHookPointHitscanPatch
     {
-        private static bool Prefix(RevolverBeam __instance, PhysicsCastResult hit)
+        private static bool Prefix(RevolverBeam __instance, PhysicsCastResult currentHit)
         {
-            PinkHookPointMarker point = hit.collider != null
-                ? hit.collider.GetComponentInParent<PinkHookPointMarker>()
+            PinkHookPointMarker point = currentHit.collider != null
+                ? currentHit.collider.GetComponentInParent<PinkHookPointMarker>()
                 : null;
             if (point == null || !point.IsPink || !CanDetonate(__instance))
                 return true;
