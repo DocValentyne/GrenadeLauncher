@@ -50,6 +50,7 @@ namespace GrenadeLauncherMod
         private static FloatSliderField blueReplacementDamage;
         private static FloatSliderField blueReplacementExplosionSize;
         private static FloatSliderField blueReplacementForce;
+        private static FloatSliderField blueLaunchedAirshotExplosionSizeMultiplier;
         private static FloatSliderField pipeDreamDistance;
         private static FloatSliderField moonShotDistance;
         private static FloatSliderField pipeDreamStylePoints;
@@ -98,6 +99,8 @@ namespace GrenadeLauncherMod
         internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
         internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
         internal static float BlueReplacementForce => blueReplacementForce?.value ?? 12575f;
+        internal static float BlueLaunchedAirshotExplosionSizeMultiplier =>
+            blueLaunchedAirshotExplosionSizeMultiplier?.value ?? 1.25f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
         internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
@@ -151,9 +154,10 @@ namespace GrenadeLauncherMod
             blueCooldown = Slider(blue, "Cooldown (seconds)", "blueCooldown", 0.05f, 10f, 7f, 2);
             blueSlingshotForce = Slider(blue, "Extra slingshot force", "blueSlingshotForce", -50f, 200f, 0f, 1);
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
-            blueReplacementDamage = Slider(blue, "Replacement explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
-            blueReplacementExplosionSize = Slider(blue, "Replacement explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
-            blueReplacementForce = Slider(blue, "Replacement enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 12575f, 0);
+            blueReplacementDamage = Slider(blue, "Pink explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
+            blueReplacementExplosionSize = Slider(blue, "Pink explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
+            blueReplacementForce = Slider(blue, "Pink explosion enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 12575f, 0);
+            blueLaunchedAirshotExplosionSizeMultiplier = Slider(blue, "Pink-launch airshot size multiplier", "blueLaunchedAirshotExplosionSizeMultiplier", 0.1f, 5f, 1.25f, 2);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
             AddPageResetButton(style, "Reset this page to default", "resetStyleBonuses");
@@ -358,6 +362,8 @@ namespace GrenadeLauncherMod
                 return Mathf.Clamp01((Time.time - blueDisplayStartedAt) / blueDisplayDuration);
             }
         }
+
+        internal static bool BlueReady => CooldownRules.NoWeaponCooldown || Time.time >= blueReadyAt;
 
         internal static void OnGreenPrimaryFired()
         {
@@ -1219,9 +1225,6 @@ namespace GrenadeLauncherMod
 
         internal static void CompleteDelivery(Vector3 point)
         {
-            Vector3 replacedPoint = current != null ? current.transform.position : point;
-            if (current != null && current.GetComponent<GeneratedBlueHookOwnership>() != null)
-                SpawnReplacementExplosion(replacedPoint);
             PlayDeleteEffect(point);
             GameObject prefab = ResolveSlingshotPrefab();
             if (prefab == null)
@@ -1230,6 +1233,7 @@ namespace GrenadeLauncherMod
             current = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
             current.name = "Grenade Launcher Blue Slingshot Point";
             current.AddComponent<GeneratedBlueHookOwnership>();
+            current.AddComponent<PinkHookPointMarker>();
             current.transform.localScale *= Mathf.Max(0.25f, PluginSettings.BluePointSize);
             HookPoint hook = current.GetComponentInChildren<HookPoint>(true);
             if (hook == null)
@@ -1252,6 +1256,19 @@ namespace GrenadeLauncherMod
             creationLockedUntilGround = false;
         }
 
+        internal static void DetonatePinkHook(PinkHookPointMarker marker)
+        {
+            if (marker == null || !marker.IsPink || !marker.TryConsume())
+                return;
+
+            Vector3 point = marker.transform.position;
+            SpawnReplacementExplosion(point);
+            if (current == marker.gameObject)
+                Cleanup();
+            else
+                UnityEngine.Object.Destroy(marker.gameObject);
+        }
+
         private static void SpawnReplacementExplosion(Vector3 point)
         {
             GameObject prefab = ResolveProvidenceExplosionEffectPrefab();
@@ -1271,7 +1288,8 @@ namespace GrenadeLauncherMod
             GameObject blast = UnityEngine.Object.Instantiate(prefab, point, Quaternion.identity);
             blast.name = "Grenade Launcher Providence Replacement Explosion";
             GrenadeLauncherExplosionMarker marker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
-            blast.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
+            GrenadeLauncherBlueShockwaveMarker shockwaveMarker = blast.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
+            shockwaveMarker.MarksPinkLaunchAirshotTargets = true;
             marker.BlueHookReplacement = true;
             marker.Mode = GrenadeExplosionMode.Surface;
             marker.Damage = Mathf.Max(0f, PluginSettings.BlueReplacementDamage);
@@ -1376,7 +1394,8 @@ namespace GrenadeLauncherMod
             if (playerShockwavePrefab == null)
                 return;
             GameObject mechanics = UnityEngine.Object.Instantiate(playerShockwavePrefab, point, Quaternion.identity);
-            mechanics.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
+            GrenadeLauncherBlueShockwaveMarker shockwaveMarker = mechanics.AddComponent<GrenadeLauncherBlueShockwaveMarker>();
+            shockwaveMarker.MarksPinkLaunchAirshotTargets = true;
             foreach (PhysicalShockwave shockwave in mechanics.GetComponentsInChildren<PhysicalShockwave>(true))
             {
                 shockwave.damage = Mathf.RoundToInt(Mathf.Max(0f, damage) * 10f);
@@ -1536,6 +1555,111 @@ namespace GrenadeLauncherMod
 
     internal sealed class GeneratedBlueHookOwnership : MonoBehaviour
     {
+    }
+
+    internal sealed class PinkHookPointMarker : MonoBehaviour
+    {
+        private static readonly Color Pink = new Color(1f, 0f, 0.55f, 1f);
+        private static readonly Color PinkEmission = new Color(1f, 0f, 0.2f, 1f) * 3f;
+        private bool pink;
+        private bool consumed;
+
+        internal bool IsPink => pink && !consumed;
+
+        private void Awake()
+        {
+            // Hook points live on their own layer, so give hitscan weapons a separate,
+            // trigger-only target on the normal enemy layer without changing hookshot.
+            GameObject hitbox = new GameObject("Pink Hookpoint Hitscan Target");
+            hitbox.layer = 11; // ULTRAKILL's raycastable enemy-trigger layer.
+            hitbox.transform.SetParent(transform, false);
+
+            SphereCollider source = GetComponent<SphereCollider>();
+            SphereCollider collider = hitbox.AddComponent<SphereCollider>();
+            collider.isTrigger = true;
+            collider.radius = source != null ? source.radius : 1f;
+            collider.center = source != null ? source.center : Vector3.zero;
+        }
+
+        private void Update()
+        {
+            if (!pink && AlternateFireController.BlueReady)
+                TurnPink();
+        }
+
+        internal bool TryConsume()
+        {
+            if (!IsPink)
+                return false;
+            consumed = true;
+            return true;
+        }
+
+        private void TurnPink()
+        {
+            pink = true;
+            foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null)
+                    continue;
+                foreach (Material material in renderer.materials)
+                {
+                    if (material == null)
+                        continue;
+                    if (material.HasProperty("_Color"))
+                        material.color = Pink;
+                    if (material.HasProperty("_BaseColor"))
+                        material.SetColor("_BaseColor", Pink);
+                    if (material.HasProperty("_EmissionColor"))
+                    {
+                        material.EnableKeyword("_EMISSION");
+                        material.SetColor("_EmissionColor", PinkEmission);
+                    }
+                }
+            }
+            foreach (Light light in GetComponentsInChildren<Light>(true))
+            {
+                if (light != null)
+                    light.color = Pink;
+            }
+            foreach (ParticleSystem particles in GetComponentsInChildren<ParticleSystem>(true))
+            {
+                if (particles == null)
+                    continue;
+                ParticleSystem.MainModule main = particles.main;
+                main.startColor = Pink;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(RevolverBeam), nameof(RevolverBeam.ExecuteHits))]
+    internal static class PinkHookPointHitscanPatch
+    {
+        private static bool Prefix(RevolverBeam __instance, PhysicsCastResult hit)
+        {
+            PinkHookPointMarker point = hit.collider != null
+                ? hit.collider.GetComponentInParent<PinkHookPointMarker>()
+                : null;
+            if (point == null || !point.IsPink || !CanDetonate(__instance))
+                return true;
+
+            HookPointManager.DetonatePinkHook(point);
+            return false;
+        }
+
+        private static bool CanDetonate(RevolverBeam beam)
+        {
+            if (beam == null)
+                return false;
+            if (beam.beamType == BeamType.Revolver)
+                return true;
+            if (beam.beamType != BeamType.Railgun)
+                return false;
+            Railcannon rail = beam.sourceWeapon != null
+                ? beam.sourceWeapon.GetComponentInParent<Railcannon>()
+                : null;
+            return rail != null && rail.variation != 1;
+        }
     }
 
     [HarmonyPatch(typeof(NewMovement), nameof(NewMovement.Respawn))]

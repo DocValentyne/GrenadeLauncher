@@ -830,6 +830,9 @@ namespace GrenadeLauncherMod
         {
             if (__instance.GetComponent<BlueHookDeliveryProjectile>() != null)
                 return false;
+            if (collision != null && collision.collider != null &&
+                collision.collider.GetComponentInParent<PinkHookPointMarker>() != null)
+                return false;
 
             GrenadeLauncherProjectile marker = __instance.GetComponent<GrenadeLauncherProjectile>();
             if (marker == null)
@@ -844,11 +847,48 @@ namespace GrenadeLauncherMod
     }
 
     [HarmonyPatch(typeof(Grenade), nameof(Grenade.Collision), new[] { typeof(Collider), typeof(Vector3) })]
+    internal static class PinkHookVanillaRocketCollisionPatch
+    {
+        private static void Prefix(Grenade __instance, Collider other)
+        {
+            if (__instance == null || !__instance.rocket || __instance.enemy)
+                return;
+            EnemyIdentifier target = GrenadeLauncherProjectile.TryGetLivingEnemy(other);
+            if (!PinkHookAirshotTarget.IsActive(target))
+                return;
+            PinkHookVanillaRocketTarget tracker = __instance.GetComponent<PinkHookVanillaRocketTarget>();
+            if (tracker == null)
+                tracker = __instance.gameObject.AddComponent<PinkHookVanillaRocketTarget>();
+            tracker.Target = target;
+        }
+    }
+
+    [HarmonyPatch(typeof(Grenade), nameof(Grenade.Explode))]
+    internal static class PinkHookVanillaRocketExplosionPatch
+    {
+        private static void Prefix(Grenade __instance, bool super, ref float sizeMultiplier)
+        {
+            if (__instance == null || !__instance.rocket || __instance.enemy || !super)
+                return;
+            PinkHookVanillaRocketTarget tracker = __instance.GetComponent<PinkHookVanillaRocketTarget>();
+            if (tracker != null && PinkHookAirshotTarget.IsActive(tracker.Target))
+                sizeMultiplier *= PluginSettings.BlueLaunchedAirshotExplosionSizeMultiplier;
+        }
+    }
+
+    internal sealed class PinkHookVanillaRocketTarget : MonoBehaviour
+    {
+        internal EnemyIdentifier Target;
+    }
+
+    [HarmonyPatch(typeof(Grenade), nameof(Grenade.Collision), new[] { typeof(Collider), typeof(Vector3) })]
     internal static class GrenadeCollisionPatch
     {
         private static bool Prefix(Grenade __instance, Collider other, Vector3 velocity)
         {
             if (__instance.GetComponent<BlueHookDeliveryProjectile>() != null)
+                return false;
+            if (other != null && other.GetComponentInParent<PinkHookPointMarker>() != null)
                 return false;
 
             GrenadeLauncherProjectile marker = __instance.GetComponent<GrenadeLauncherProjectile>();
@@ -858,6 +898,13 @@ namespace GrenadeLauncherMod
             marker.HandleCollision(other, velocity, Vector3.zero, __instance.transform.position);
             return false;
         }
+    }
+
+    [HarmonyPatch(typeof(Grenade), "OnTriggerEnter")]
+    internal static class PinkHookGrenadeTriggerIgnorePatch
+    {
+        private static bool Prefix(Collider other) =>
+            other == null || other.GetComponentInParent<PinkHookPointMarker>() == null;
     }
 
     [HarmonyPatch(typeof(Explosion), "Collide")]
@@ -971,6 +1018,46 @@ namespace GrenadeLauncherMod
     // be suppressed without changing ordinary explosions.
     internal sealed class GrenadeLauncherBlueShockwaveMarker : MonoBehaviour
     {
+        internal bool MarksPinkLaunchAirshotTargets;
+    }
+
+    internal sealed class PinkHookAirshotTarget : MonoBehaviour
+    {
+        private const float MinimumAirTime = 0.2f;
+        private const float MaximumLifetime = 5f;
+        private EnemyIdentifier enemy;
+        private float canExpireAt;
+        private float expiresAt;
+
+        internal static void Mark(EnemyIdentifier target)
+        {
+            if (target == null || target.dead)
+                return;
+            PinkHookAirshotTarget marker = target.GetComponent<PinkHookAirshotTarget>();
+            if (marker == null)
+                marker = target.gameObject.AddComponent<PinkHookAirshotTarget>();
+            marker.enemy = target;
+            marker.canExpireAt = Time.time + MinimumAirTime;
+            marker.expiresAt = Time.time + MaximumLifetime;
+        }
+
+        internal static bool IsActive(EnemyIdentifier target)
+        {
+            PinkHookAirshotTarget marker = target != null ? target.GetComponent<PinkHookAirshotTarget>() : null;
+            return marker != null && marker.enabled && Time.time <= marker.expiresAt;
+        }
+
+        private void Awake()
+        {
+            enemy = GetComponent<EnemyIdentifier>();
+        }
+
+        private void Update()
+        {
+            if (enemy == null || enemy.dead || Time.time > expiresAt ||
+                (Time.time >= canExpireAt && enemy.gce != null && enemy.gce.onGround))
+                Destroy(this);
+        }
     }
 
     internal static class GrenadeLauncherBlueShockwaveContext
@@ -991,18 +1078,29 @@ namespace GrenadeLauncherMod
     [HarmonyPatch(typeof(PhysicalShockwave), "CheckCollision")]
     internal static class GrenadeLauncherPhysicalShockwavePatch
     {
-        private static bool Prefix(PhysicalShockwave __instance, out bool __state)
+        private struct State
         {
-            __state = __instance != null &&
-                      __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>() != null;
-            if (__state)
+            internal bool Active;
+        }
+
+        private static bool Prefix(PhysicalShockwave __instance, Collider other, out State __state)
+        {
+            GrenadeLauncherBlueShockwaveMarker marker = __instance != null
+                ? __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>()
+                : null;
+            __state = new State { Active = marker != null };
+            if (__state.Active)
+            {
                 GrenadeLauncherBlueShockwaveContext.Enter();
+                if (marker.MarksPinkLaunchAirshotTargets)
+                    PinkHookAirshotTarget.Mark(GrenadeLauncherProjectile.TryGetLivingEnemy(other));
+            }
             return true;
         }
 
-        private static Exception Finalizer(bool __state, Exception __exception)
+        private static Exception Finalizer(State __state, Exception __exception)
         {
-            if (__state)
+            if (__state.Active)
                 GrenadeLauncherBlueShockwaveContext.Exit();
             return __exception;
         }
@@ -1883,6 +1981,8 @@ namespace GrenadeLauncherMod
                 sizeMultiplier = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotExplosionSize
                     : PluginSettings.AirshotExplosionSize;
+                if (PinkHookAirshotTarget.IsActive(directEnemy))
+                    sizeMultiplier *= PluginSettings.BlueLaunchedAirshotExplosionSizeMultiplier;
             }
 
             if (longRangeStyle == GrenadeLongRangeStyle.PipeDream)
