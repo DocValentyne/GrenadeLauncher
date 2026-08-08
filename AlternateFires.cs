@@ -70,7 +70,7 @@ namespace GrenadeLauncherMod
         internal static float GreenAirshotDamage => greenAirshotDamage?.value ?? 7.5f;
         internal static float GreenSurfaceDamage => greenSurfaceDamage?.value ?? 4f;
         internal static float GreenDirectExplosionSize => greenDirectExplosionSize?.value ?? 1.4f;
-        internal static float GreenAirshotExplosionSize => greenAirshotExplosionSize?.value ?? 1.4f;
+        internal static float GreenAirshotExplosionSize => greenAirshotExplosionSize?.value ?? 1.5f;
         internal static float GreenSurfaceExplosionSize => greenSurfaceExplosionSize?.value ?? 1f;
         internal static float GreenDirectSelfDamage => greenDirectSelfDamage?.value ?? 35f;
         internal static float GreenSurfaceSelfDamage => greenSurfaceSelfDamage?.value ?? 35f;
@@ -97,7 +97,7 @@ namespace GrenadeLauncherMod
         internal static float BluePointSize => bluePointSize?.value ?? 1f;
         internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
         internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
-        internal static float BlueReplacementForce => blueReplacementForce?.value ?? 12575f;
+        internal static float BlueReplacementForce => blueReplacementForce?.value ?? 20000f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
         internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
@@ -122,7 +122,7 @@ namespace GrenadeLauncherMod
             greenAirshotDamage = Slider(green, "Airshot damage", "greenAirshotDamage", 0f, 25f, 7.5f, 2);
             greenSurfaceDamage = Slider(green, "Surface contact damage", "greenSurfaceDamage", 0f, 20f, 4f, 2);
             greenDirectExplosionSize = Slider(green, "Direct explosion size (rocket = 1)", "greenDirectExplosionSize", 0.1f, 5f, 1.4f, 2);
-            greenAirshotExplosionSize = Slider(green, "Airshot explosion size", "greenAirshotExplosionSize", 0.1f, 5f, 1.4f, 2);
+            greenAirshotExplosionSize = Slider(green, "Airshot explosion size", "greenAirshotExplosionSize", 0.1f, 5f, 1.5f, 2);
             greenSurfaceExplosionSize = Slider(green, "Surface explosion size (rocket = 1)", "greenSurfaceExplosionSize", 0.1f, 5f, 1f, 2);
             greenDirectSelfDamage = Slider(green, "Direct self damage (HP)", "greenDirectSelfDamage", 0f, 100f, 35f, 0);
             greenSurfaceSelfDamage = Slider(green, "Surface self damage (HP)", "greenSurfaceSelfDamage", 0f, 100f, 35f, 0);
@@ -153,7 +153,7 @@ namespace GrenadeLauncherMod
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
             blueReplacementDamage = Slider(blue, "Pink explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
             blueReplacementExplosionSize = Slider(blue, "Pink explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
-            blueReplacementForce = Slider(blue, "Pink explosion enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 12575f, 0);
+            blueReplacementForce = Slider(blue, "Pink explosion enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 20000f, 0);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
             AddPageResetButton(style, "Reset this page to default", "resetStyleBonuses");
@@ -480,6 +480,14 @@ namespace GrenadeLauncherMod
 
         internal static void Reset()
         {
+            ClearCooldowns();
+            greenVolleyFrame = -1;
+            DelayedGreenShot.CancelAll();
+            GrenadeAlternateUpdatePatch.ResetAudioTracking();
+        }
+
+        internal static void ClearCooldowns()
+        {
             greenReadyAt = 0f;
             greenDisplayReadyAt = 0f;
             greenDisplayStartedAt = 0f;
@@ -488,9 +496,6 @@ namespace GrenadeLauncherMod
             blueDisplayReadyAt = 0f;
             blueDisplayStartedAt = 0f;
             blueDisplayDuration = 0f;
-            greenVolleyFrame = -1;
-            DelayedGreenShot.CancelAll();
-            GrenadeAlternateUpdatePatch.ResetAudioTracking();
         }
 
         internal static void FireDelayedGreen(RocketLauncher launcher)
@@ -955,18 +960,7 @@ namespace GrenadeLauncherMod
 
         internal static bool CanCurrentBeamDetonate
         {
-            get
-            {
-                RevolverBeam beam = Current;
-                if (beam == null)
-                    return false;
-                if (beam.beamType == BeamType.Revolver)
-                    return true;
-                if (beam.beamType != BeamType.Railgun)
-                    return false;
-                Railcannon rail = beam.sourceWeapon != null ? beam.sourceWeapon.GetComponentInParent<Railcannon>() : null;
-                return rail != null && rail.variation != 1;
-            }
+            get { return PlayerHitscanRules.CanDetonateGrenade(Current); }
         }
 
         internal static void Enter(RevolverBeam beam) => beams.Push(beam);
@@ -974,6 +968,23 @@ namespace GrenadeLauncherMod
         {
             if (beams.Count > 0)
                 beams.Pop();
+        }
+    }
+
+    internal static class PlayerHitscanRules
+    {
+        internal static bool CanDetonateGrenade(RevolverBeam beam)
+        {
+            if (beam == null)
+                return false;
+            if (beam.beamType == BeamType.Revolver)
+                return true;
+            if (beam.beamType != BeamType.Railgun)
+                return false;
+            Railcannon rail = beam.sourceWeapon != null
+                ? beam.sourceWeapon.GetComponentInParent<Railcannon>()
+                : null;
+            return rail != null && rail.variation != 1;
         }
     }
 
@@ -1655,26 +1666,13 @@ namespace GrenadeLauncherMod
             PinkHookPointMarker point = currentHit.collider != null
                 ? currentHit.collider.GetComponentInParent<PinkHookPointMarker>()
                 : null;
-            if (point == null || !point.IsPink || !CanDetonate(__instance))
+            if (point == null || !point.IsPink || !PlayerHitscanRules.CanDetonateGrenade(__instance))
                 return true;
 
             HookPointManager.DetonatePinkHook(point);
             return false;
         }
 
-        private static bool CanDetonate(RevolverBeam beam)
-        {
-            if (beam == null)
-                return false;
-            if (beam.beamType == BeamType.Revolver)
-                return true;
-            if (beam.beamType != BeamType.Railgun)
-                return false;
-            Railcannon rail = beam.sourceWeapon != null
-                ? beam.sourceWeapon.GetComponentInParent<Railcannon>()
-                : null;
-            return rail != null && rail.variation != 1;
-        }
     }
 
     [HarmonyPatch(typeof(NewMovement), nameof(NewMovement.Respawn))]
@@ -1690,11 +1688,13 @@ namespace GrenadeLauncherMod
     internal sealed class AlternateFireRuntime : MonoBehaviour
     {
         private bool lastGrenadeMode;
+        private bool noCooldownWasActive;
 
         private void OnEnable()
         {
             SceneManager.sceneLoaded += OnSceneLoaded;
             lastGrenadeMode = Plugin.Instance != null && Plugin.Instance.AnyGrenadeModeEnabled;
+            noCooldownWasActive = CooldownRules.NoWeaponCooldown;
         }
 
         private void OnDisable() => SceneManager.sceneLoaded -= OnSceneLoaded;
@@ -1702,6 +1702,13 @@ namespace GrenadeLauncherMod
         private void Update()
         {
             HookPointManager.UpdateUsageLock();
+            bool noCooldown = CooldownRules.NoWeaponCooldown;
+            if (noCooldown && !noCooldownWasActive)
+            {
+                RocketCooldownSync.Reset();
+                AlternateFireController.ClearCooldowns();
+            }
+            noCooldownWasActive = noCooldown;
             bool enabled = Plugin.Instance != null && Plugin.Instance.AnyGrenadeModeEnabled;
             if (lastGrenadeMode && !enabled)
                 CleanupAll();

@@ -34,17 +34,6 @@ namespace GrenadeLauncherMod
         private Harmony harmony;
         private GameObject runtimeHost;
 
-        internal bool GrenadeModeEnabled
-        {
-            get { return GetSlotEntry(GameProgressSaver.currentSlot).Value; }
-            set
-            {
-                GetSlotEntry(GameProgressSaver.currentSlot).Value = value;
-                Config.Save();
-                TerminalIntegration.RefreshAll();
-            }
-        }
-
         internal bool IsGrenadeModeEnabled(int variation)
         {
             if (variation < 0 || variation > 2)
@@ -228,7 +217,10 @@ namespace GrenadeLauncherMod
         internal static void ApplyAfterShot(RocketLauncher firedLauncher, bool grenadeShot)
         {
             if (CooldownRules.NoWeaponCooldown)
+            {
+                Reset();
                 return;
+            }
 
             float grenadeInterval = Mathf.Max(0f, PluginSettings.FireInterval);
             grenadeReadyAt = Time.time + grenadeInterval;
@@ -243,7 +235,10 @@ namespace GrenadeLauncherMod
                 return;
 
             if (CooldownRules.NoWeaponCooldown)
+            {
+                Reset();
                 Cooldown(launcher) = 0f;
+            }
             else
             {
                 bool grenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
@@ -281,7 +276,6 @@ namespace GrenadeLauncherMod
         {
             internal bool Active;
             internal bool EnteredContext;
-            internal bool Executed;
             internal bool DualWieldDuplicate;
             internal bool NotifyGreenPrimary;
             internal bool NotifyBluePrimary;
@@ -299,8 +293,6 @@ namespace GrenadeLauncherMod
                 DualWieldDuplicate = dualWieldDuplicate,
                 RateOfFire = __instance.rateOfFire,
             };
-            __state.Executed = true;
-
             if (!__state.Active)
                 return true;
 
@@ -318,7 +310,7 @@ namespace GrenadeLauncherMod
         private static Exception Finalizer(RocketLauncher __instance, State __state, Exception __exception)
         {
             Restore(__instance, __state);
-            if (__exception == null && __state.Executed && !__state.DualWieldDuplicate)
+            if (__exception == null && !__state.DualWieldDuplicate)
                 RocketCooldownSync.ApplyAfterShot(__instance, __state.Active);
             if (__exception == null && __state.NotifyGreenPrimary)
                 AlternateFireController.OnGreenPrimaryFired();
@@ -451,7 +443,7 @@ namespace GrenadeLauncherMod
             {
                 { EnemyType.Cerberus, 120f },
                 { EnemyType.Gutterman, 110f },
-                { EnemyType.HideousMass, 85f },
+                { EnemyType.HideousMass, 90f },
                 { EnemyType.MaliciousFace, 100f },
                 { EnemyType.Mannequin, 200f },
                 { EnemyType.Providence, 175f },
@@ -460,7 +452,7 @@ namespace GrenadeLauncherMod
 
         internal static float Damage => damage?.value ?? 4f;
         internal static float AirshotDamage => airshotDamage?.value ?? 6f;
-        internal static float AirshotExplosionSize => airshotExplosionSize?.value ?? 0.9f;
+        internal static float AirshotExplosionSize => airshotExplosionSize?.value ?? 1f;
         internal static float SpeedMultiplier => speed?.value ?? 1f;
         internal static float UpwardVelocityMultiplier => upwardVelocity?.value ?? 1f;
         internal static float FireInterval => fireInterval?.value ?? 0.6f;
@@ -518,7 +510,7 @@ namespace GrenadeLauncherMod
 
             damage = Slider(configurator, "Damage", "damage", 0f, 10f, 4f, 2);
             airshotDamage = Slider(configurator, "Airshot damage", "airshotDamage", 0f, 20f, 6f, 2);
-            airshotExplosionSize = Slider(configurator, "Airshot explosion size", "airshotExplosionSize", 0.1f, 5f, 0.9f, 2);
+            airshotExplosionSize = Slider(configurator, "Airshot explosion size", "airshotExplosionSize", 0.1f, 5f, 1f, 2);
             MigrateDamageDefault();
             speed = Slider(configurator, "Projectile speed multiplier", "speedMultiplier", 0.1f, 3f, 1f, 2);
             upwardVelocity = Slider(configurator, "Upward velocity multiplier", "upwardVelocityMultiplier", 0f, 3f, 1f, 2);
@@ -554,8 +546,6 @@ namespace GrenadeLauncherMod
             fallbackEyeHeight = Slider(calibration, "Fallback V1 eye height", "fallbackEyeHeight", 0.5f, 10f, 2.9f, 2);
 
             InitializeAlternateSettings(configurator);
-            MigrateAirshotSizeDefaults();
-
             ConfigPanel enemyPanel = new ConfigPanel(
                 configurator.rootPanel,
                 "Enemy grenade damage",
@@ -776,25 +766,6 @@ namespace GrenadeLauncherMod
             Plugin.Instance.Config.Save();
         }
 
-        private static void MigrateAirshotSizeDefaults()
-        {
-            ConfigEntry<int> defaultsVersion = Plugin.Instance.Config.Bind(
-                "Migration",
-                "DefaultsVersion",
-                0,
-                "Internal version used to apply changed defaults once without overwriting later customization.");
-
-            if (defaultsVersion.Value >= 2)
-                return;
-
-            if (Mathf.Approximately(airshotExplosionSize.value, 1f))
-                airshotExplosionSize.value = 0.9f;
-            if (Mathf.Approximately(GreenAirshotExplosionSize, 1f))
-                greenAirshotExplosionSize.value = 1.4f;
-
-            defaultsVersion.Value = 2;
-            Plugin.Instance.Config.Save();
-        }
     }
 
     [HarmonyPatch(typeof(Grenade), "Awake")]
@@ -2141,7 +2112,6 @@ namespace GrenadeLauncherMod
 
     internal sealed class TerminalIntegration : MonoBehaviour
     {
-        private const string PanelName = "Grenade Launcher Mod Equipment";
         private static readonly List<RocketVariantTerminalController> Controllers = new List<RocketVariantTerminalController>();
         private float nextScan;
 
@@ -2158,9 +2128,6 @@ namespace GrenadeLauncherMod
 
             Transform window = windowObject.transform;
             TrajectoryCalibration.CaptureStandingEyeHeight();
-            Transform oldPanel = window.Find(PanelName);
-            if (oldPanel != null)
-                Destroy(oldPanel.gameObject);
 
             Plugin.Instance?.EnsureVariantMigration();
             foreach (VariationInfo variation in window.GetComponentsInChildren<VariationInfo>(true))
@@ -2172,13 +2139,6 @@ namespace GrenadeLauncherMod
                 controller.Initialize(variation, variation.weaponName[4] - '0');
                 Controllers.Add(controller);
             }
-        }
-
-        internal static void RefreshAll()
-        {
-            Controllers.RemoveAll(controller => controller == null);
-            foreach (RocketVariantTerminalController controller in Controllers)
-                controller.RefreshDisplay();
         }
 
         internal static void Cleanup()
