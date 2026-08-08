@@ -50,6 +50,7 @@ namespace GrenadeLauncherMod
         private static FloatSliderField blueReplacementDamage;
         private static FloatSliderField blueReplacementExplosionSize;
         private static FloatSliderField blueReplacementForce;
+        private static FloatSliderField pinkArmingDelay;
         private static FloatSliderField pipeDreamDistance;
         private static FloatSliderField moonShotDistance;
         private static FloatSliderField pipeDreamStylePoints;
@@ -92,12 +93,13 @@ namespace GrenadeLauncherMod
         internal static bool TimedFuseDetonatesStuck => timedFuseDetonatesStuck?.value ?? false;
 
         internal static float BlueDistance => blueDistance?.value ?? 27f;
-        internal static float BlueCooldown => blueCooldown?.value ?? 7f;
+        internal static float BlueCooldown => blueCooldown?.value ?? 4f;
         internal static float BlueSlingshotForce => blueSlingshotForce?.value ?? 0f;
         internal static float BluePointSize => bluePointSize?.value ?? 1f;
-        internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 2f;
-        internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1f;
+        internal static float BlueReplacementDamage => blueReplacementDamage?.value ?? 3.5f;
+        internal static float BlueReplacementExplosionSize => blueReplacementExplosionSize?.value ?? 1.2f;
         internal static float BlueReplacementForce => blueReplacementForce?.value ?? 20000f;
+        internal static float PinkArmingDelay => pinkArmingDelay?.value ?? 2f;
         internal static float PipeDreamMinimumDistance => pipeDreamDistance?.value ?? 56f;
         internal static float MoonShotMinimumDistance => moonShotDistance?.value ?? 125f;
         internal static int PipeDreamStylePoints => Mathf.RoundToInt(pipeDreamStylePoints?.value ?? 150f);
@@ -148,11 +150,12 @@ namespace GrenadeLauncherMod
             ConfigPanel blue = new ConfigPanel(configurator.rootPanel, "Blue slingshot point", "blueSlingshotPoint");
             AddPageResetButton(blue, "Reset this page to default", "resetBlueSlingshotPoint");
             blueDistance = Slider(blue, "Placement distance", "bluePlacementDistance", 5.5f, 200f, 27f, 1);
-            blueCooldown = Slider(blue, "Cooldown (seconds)", "blueCooldown", 0.05f, 10f, 7f, 2);
+            blueCooldown = Slider(blue, "Cooldown (seconds)", "blueCooldown", 0.05f, 10f, 4f, 2);
             blueSlingshotForce = Slider(blue, "Extra slingshot force", "blueSlingshotForce", -50f, 200f, 0f, 1);
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
-            blueReplacementDamage = Slider(blue, "Pink explosion damage", "blueReplacementDamage", 0f, 20f, 2f, 2);
-            blueReplacementExplosionSize = Slider(blue, "Pink explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1f, 2);
+            pinkArmingDelay = Slider(blue, "Time before hook point turns pink (seconds)", "pinkArmingDelay", 0f, 30f, 2f, 2);
+            blueReplacementDamage = Slider(blue, "Pink explosion damage", "blueReplacementDamage", 0f, 20f, 3.5f, 2);
+            blueReplacementExplosionSize = Slider(blue, "Pink explosion size (Providence = 1)", "blueReplacementExplosionSize", 0.1f, 5f, 1.2f, 2);
             blueReplacementForce = Slider(blue, "Pink explosion enemy launch force", "blueReplacementForceRaw", 0f, 50000f, 20000f, 0);
 
             ConfigPanel style = new ConfigPanel(configurator.rootPanel, "Style bonuses", "styleBonuses");
@@ -358,8 +361,6 @@ namespace GrenadeLauncherMod
                 return Mathf.Clamp01((Time.time - blueDisplayStartedAt) / blueDisplayDuration);
             }
         }
-
-        internal static bool BlueReady => CooldownRules.NoWeaponCooldown || Time.time >= blueReadyAt;
 
         internal static void OnGreenPrimaryFired()
         {
@@ -1566,6 +1567,7 @@ namespace GrenadeLauncherMod
         private static readonly Color PinkEmission = new Color(1f, 0f, 0.2f, 1f) * 3f;
         private bool pink;
         private bool consumed;
+        private float createdAt;
         private SphereCollider hitscanCollider;
         private SphereCollider piercingHitscanCollider;
 
@@ -1573,6 +1575,7 @@ namespace GrenadeLauncherMod
 
         private void Awake()
         {
+            createdAt = Time.time;
             // Hook points live on their own layer, so give hitscan weapons a separate,
             // trigger-only target on the normal enemy layer without changing hookshot.
             GameObject hitbox = new GameObject("Pink Hookpoint Hitscan Target");
@@ -1603,7 +1606,7 @@ namespace GrenadeLauncherMod
 
         private void Update()
         {
-            if (!pink && AlternateFireController.BlueReady)
+            if (!pink && Time.time - createdAt >= Mathf.Max(0f, PluginSettings.PinkArmingDelay))
                 TurnPink();
         }
 

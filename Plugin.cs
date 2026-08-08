@@ -206,6 +206,7 @@ namespace GrenadeLauncherMod
 
     internal static class RocketCooldownSync
     {
+        private const float EquipDrawDelay = 0.25f;
         private static readonly AccessTools.FieldRef<RocketLauncher, float> Cooldown =
             AccessTools.FieldRefAccess<RocketLauncher, float>("cooldown");
         private static float standardReadyAt;
@@ -243,7 +244,10 @@ namespace GrenadeLauncherMod
             {
                 bool grenade = Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(launcher);
                 float readyAt = grenade ? grenadeReadyAt : standardReadyAt;
-                Cooldown(launcher) = Mathf.Max(0f, readyAt - Time.time);
+                // Vanilla guarantees at least 0.25 seconds before a newly equipped
+                // Rocket Launcher can fire. Preserve that draw lock while replacing
+                // vanilla's shared rocketcharge with our asymmetric ready times.
+                Cooldown(launcher) = Mathf.Max(EquipDrawDelay, readyAt - Time.time);
             }
         }
 
