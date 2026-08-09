@@ -1150,6 +1150,7 @@ namespace GrenadeLauncherMod
         private static bool loggedMissingReplacementExplosion;
         private static bool creationLockedUntilGround;
         private static bool currentHookUsed;
+        private static bool leftGroundSinceHookUse;
         private static HookPoint currentHook;
         private static HookArm currentArm;
         private static float nextArmLookupAt;
@@ -1197,6 +1198,7 @@ namespace GrenadeLauncherMod
             {
                 creationLockedUntilGround = false;
                 currentHookUsed = false;
+                leftGroundSinceHookUse = false;
                 currentHook = null;
                 currentArm = null;
                 return;
@@ -1204,8 +1206,13 @@ namespace GrenadeLauncherMod
 
             if (currentHookUsed)
             {
-                if (creationLockedUntilGround && movement != null && movement.gc != null && movement.gc.onGround)
-                    creationLockedUntilGround = false;
+                if (creationLockedUntilGround && movement != null && movement.gc != null)
+                {
+                    if (!movement.gc.onGround)
+                        leftGroundSinceHookUse = true;
+                    else if (leftGroundSinceHookUse)
+                        creationLockedUntilGround = false;
+                }
                 return;
             }
 
@@ -1225,7 +1232,12 @@ namespace GrenadeLauncherMod
                 ReferenceEquals(CaughtHookField.GetValue(currentArm), currentHook))
             {
                 currentHookUsed = true;
-                creationLockedUntilGround = movement == null || movement.gc == null || !movement.gc.onGround;
+                // A generated hook is a one-use vertical-movement tool.  Do not decide
+                // its lock from a single frame of grounded state: players can begin a
+                // hook from the floor, immediately leave it, and otherwise create a new
+                // point while still climbing.  Require a genuine leave-ground/land cycle.
+                creationLockedUntilGround = true;
+                leftGroundSinceHookUse = movement == null || movement.gc == null || !movement.gc.onGround;
             }
         }
 
@@ -1260,6 +1272,7 @@ namespace GrenadeLauncherMod
             nextHookStateCheckAt = Time.unscaledTime;
             currentHookUsed = false;
             creationLockedUntilGround = false;
+            leftGroundSinceHookUse = false;
         }
 
         internal static void DetonatePinkHook(PinkHookPointMarker marker)
@@ -1550,6 +1563,7 @@ namespace GrenadeLauncherMod
             current = null;
             creationLockedUntilGround = false;
             currentHookUsed = false;
+            leftGroundSinceHookUse = false;
             currentHook = null;
             currentArm = null;
             nextArmLookupAt = 0f;

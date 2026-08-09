@@ -6,7 +6,7 @@
 - Blue hook points now arm after a configurable delay, turn pink, and can be detonated by supported player hitscan attacks for a configurable Providence-style explosion.
 - Added reset buttons for each Plugin Configurator page and a reset-all-pages button.
 - Increased the default stuck-grenade lifetime to 60 seconds and prevented enemy attacks from detonating stuck grenades.
-- Fixed mixed Rocket Launcher/Grenade Launcher swap cooldowns, primary fire occurring before the weapon finished drawing, held alternate-fire input, death resets, and no-cooldown cheat behavior.
+- Fixed mixed Rocket Launcher/Grenade Launcher swap cooldowns, primary fire occurring before the weapon finished drawing, held alternate-fire input, death resets, no-cooldown cheat behavior, and generated hook points being reused before landing.
 - Removed the obsolete snappier arc preset and improved dual-wield alternate-fire timing.
 - Updated tested defaults, including a 4-second blue cooldown, 3.5 pink explosion damage, 1.2 pink explosion size, 90% Hideous Mass damage, 150 PIPE DREAM style, and 550 MOON SHOT/OUT-SNIPED style.
 
