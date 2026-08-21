@@ -23,7 +23,7 @@ namespace GrenadeLauncherMod
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "1.1.1";
+        public const string Version = "1.2.0";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }
@@ -446,16 +446,17 @@ namespace GrenadeLauncherMod
             new Dictionary<EnemyType, float>
             {
                 { EnemyType.Cerberus, 120f },
-                { EnemyType.Gutterman, 110f },
-                { EnemyType.HideousMass, 90f },
+                { EnemyType.Gutterman, 120f },
+                { EnemyType.Guttertank, 120f },
+                { EnemyType.HideousMass, 100f },
                 { EnemyType.MaliciousFace, 100f },
                 { EnemyType.Mannequin, 200f },
                 { EnemyType.Providence, 175f },
                 { EnemyType.Schism, 125f }
             };
 
-        internal static float Damage => damage?.value ?? 4f;
-        internal static float AirshotDamage => airshotDamage?.value ?? 6f;
+        internal static float Damage => damage?.value ?? 4.5f;
+        internal static float AirshotDamage => airshotDamage?.value ?? 7f;
         internal static float AirshotExplosionSize => airshotExplosionSize?.value ?? 1f;
         internal static float SpeedMultiplier => speed?.value ?? 1f;
         internal static float UpwardVelocityMultiplier => upwardVelocity?.value ?? 1f;
@@ -466,7 +467,7 @@ namespace GrenadeLauncherMod
         internal static float StuckLifetime => stuckLifetime?.value ?? 60f;
         internal static float SurfaceFuse => surfaceFuse?.value ?? 1f;
         internal static float HookFuseGrace => hookFuseGrace?.value ?? 0.1f;
-        internal static float SurfaceDamage => surfaceDamage?.value ?? 2.5f;
+        internal static float SurfaceDamage => surfaceDamage?.value ?? 3f;
         internal static float BounceRetention => bounceRetention?.value ?? 0.1f;
         internal static float ParryDamage => parryDamage?.value ?? 4.5f;
         internal static float ParryExplosionSize => parryExplosionSize?.value ?? 1f;
@@ -512,10 +513,9 @@ namespace GrenadeLauncherMod
                 new[] { ArcOriginal, ArcCustom },
                 ArcOriginal);
 
-            damage = Slider(configurator, "Damage", "damage", 0f, 10f, 4f, 2);
-            airshotDamage = Slider(configurator, "Airshot damage", "airshotDamage", 0f, 20f, 6f, 2);
+            damage = Slider(configurator, "Damage", "damage", 0f, 10f, 4.5f, 2);
+            airshotDamage = Slider(configurator, "Airshot damage", "airshotDamage", 0f, 20f, 7f, 2);
             airshotExplosionSize = Slider(configurator, "Airshot explosion size", "airshotExplosionSize", 0.1f, 5f, 1f, 2);
-            MigrateDamageDefault();
             speed = Slider(configurator, "Projectile speed multiplier", "speedMultiplier", 0.1f, 3f, 1f, 2);
             upwardVelocity = Slider(configurator, "Upward velocity multiplier", "upwardVelocityMultiplier", 0f, 3f, 1f, 2);
             customGravity = Slider(configurator, "Custom gravity multiplier", "customGravityMultiplier", 0.1f, 5f, 1f, 2);
@@ -526,7 +526,7 @@ namespace GrenadeLauncherMod
             stuckLifetime = Slider(configurator, "Stuck grenade lifetime (seconds)", "stuckLifetime", 1f, 300f, 60f, 1);
             surfaceFuse = Slider(configurator, "Surface fuse (seconds)", "surfaceFuse", 0.1f, 10f, 1f, 2);
             hookFuseGrace = Slider(configurator, "Fuse time added per Whiplash hook (seconds)", "hookFuseGrace", 0f, 2f, 0.1f, 2);
-            surfaceDamage = Slider(configurator, "Surface detonation damage", "surfaceDamage", 0f, 10f, 2.5f, 2);
+            surfaceDamage = Slider(configurator, "Surface detonation damage", "surfaceDamage", 0f, 10f, 3f, 2);
             bounceRetention = Slider(configurator, "Surface bounce speed retention", "bounceRetention", 0f, 1f, 0.1f, 2);
             parryDamage = Slider(configurator, "Parried grenade damage", "parryDamage", 0f, 20f, 4.5f, 2);
             parryExplosionSize = Slider(configurator, "Parried explosion size (rocket = 1)", "parryExplosionSize", 0.25f, 5f, 1f, 2);
@@ -568,6 +568,7 @@ namespace GrenadeLauncherMod
                     releaseEnemyDamageDefaults.TryGetValue(enemyType, out float defaultPercent) ? defaultPercent : 100f,
                     0);
             }
+            MigrateBalanceDefaults(configurator);
         }
 
         private static void ApplyConfiguratorIcon(PluginConfigurator configurator)
@@ -752,7 +753,7 @@ namespace GrenadeLauncherMod
             return result.ToString();
         }
 
-        private static void MigrateDamageDefault()
+        private static void MigrateBalanceDefaults(PluginConfigurator configurator)
         {
             ConfigEntry<int> defaultsVersion = Plugin.Instance.Config.Bind(
                 "Migration",
@@ -760,14 +761,43 @@ namespace GrenadeLauncherMod
                 0,
                 "Internal version used to apply changed defaults once without overwriting later customization.");
 
-            if (defaultsVersion.Value >= 1)
+            if (defaultsVersion.Value >= 3)
                 return;
 
-            if (Mathf.Approximately(damage.value, 3f))
-                damage.value = 4f;
+            // Only replace exact values shipped by a prior public version. Any other
+            // value is deliberate player tuning and must stay untouched.
+            ReplaceReleasedDefault(damage, 4.5f, 3f, 4f);
+            ReplaceReleasedDefault(airshotDamage, 7f, 6f);
+            ReplaceReleasedDefault(surfaceDamage, 3f, 2.5f);
+            ReplaceReleasedDefault(greenAirshotDamage, 8f, 7.5f);
+            ReplaceReleasedDefault(greenSurfaceDamage, 4.5f, 4f);
+            ReplaceReleasedDefault(stuckDamage, 4.5f, 4f);
+            ReplaceReleasedDefault(stuckSelfDamage, 35f, 45f);
+            ReplaceReleasedDefault(blueDistance, 20f, 27f);
 
-            defaultsVersion.Value = 1;
+            ReplaceEnemyReleasedDefault(EnemyType.Gutterman, 120f, 100f, 110f);
+            ReplaceEnemyReleasedDefault(EnemyType.Guttertank, 120f, 100f);
+            ReplaceEnemyReleasedDefault(EnemyType.HideousMass, 100f, 80f, 85f, 90f);
+
+            defaultsVersion.Value = 3;
+            // Plugin Configurator owns these fields in a separate config file. Flush it
+            // before marking this one-time migration complete, otherwise a successful
+            // BepInEx save could leave old slider values on disk.
+            configurator?.FlushAll();
             Plugin.Instance.Config.Save();
+        }
+
+        private static void ReplaceReleasedDefault(FloatSliderField field, float replacement, params float[] releasedValues)
+        {
+            if (field == null || !releasedValues.Any(value => Mathf.Approximately(field.value, value)))
+                return;
+            field.value = replacement;
+        }
+
+        private static void ReplaceEnemyReleasedDefault(EnemyType enemyType, float replacement, params float[] releasedValues)
+        {
+            if (enemyDamageMultipliers.TryGetValue(enemyType, out FloatSliderField field))
+                ReplaceReleasedDefault(field, replacement, releasedValues);
         }
 
     }
@@ -891,6 +921,7 @@ namespace GrenadeLauncherMod
             internal int Damage;
             internal GrenadeLauncherExplosionMarker Marker;
             internal EnemyIdentifier Enemy;
+            internal bool ReplacesDirectHitBaseStyle;
         }
 
         private static bool Prefix(Explosion __instance, Collider other, out State __state)
@@ -928,6 +959,12 @@ namespace GrenadeLauncherMod
 
             __state.Marker = marker;
             __state.Enemy = enemy;
+            __state.ReplacesDirectHitBaseStyle = marker.DirectEnemyId == enemy.GetInstanceID() &&
+                                                 !marker.Parried &&
+                                                 (marker.Mode == GrenadeExplosionMode.Direct ||
+                                                  marker.Mode == GrenadeExplosionMode.GreenDirect);
+            if (__state.ReplacesDirectHitBaseStyle)
+                GrenadeDirectHitStyleContext.Enter();
 
             if (PluginSettings.EnemyCarrierTakesDirectDamage && marker.StuckHostEnemyId != 0 &&
                 enemy.GetInstanceID() == marker.StuckHostEnemyId)
@@ -970,6 +1007,8 @@ namespace GrenadeLauncherMod
 
         private static Exception Finalizer(Explosion __instance, State __state, Exception __exception)
         {
+            if (__state.ReplacesDirectHitBaseStyle)
+                GrenadeDirectHitStyleContext.Exit();
             if (__state.ChangedMultiplier)
                 __instance.enemyDamageMultiplier = __state.EnemyDamageMultiplier;
             if (__state.ChangedDamage)
@@ -981,6 +1020,28 @@ namespace GrenadeLauncherMod
                 __state.Marker.QueueDirectHitTelemetry(__state.Enemy);
             }
             return __exception;
+        }
+    }
+
+    internal static class GrenadeDirectHitStyleContext
+    {
+        private static int depth;
+
+        internal static bool Active => depth > 0;
+        internal static void Enter() => depth++;
+        internal static void Exit() => depth = Math.Max(0, depth - 1);
+    }
+
+    // ULTRAKILL awards direct explosion hits through StyleCalculator with the normal,
+    // non-displayed `ultrakill.explosionhit` point ID. Replace only that base value;
+    // do not create an extra style-bonus line in the HUD.
+    [HarmonyPatch(typeof(StyleCalculator), "AddPoints")]
+    internal static class GrenadeDirectHitBaseStylePatch
+    {
+        private static void Prefix(ref int points, string pointName)
+        {
+            if (GrenadeDirectHitStyleContext.Active && pointName == "ultrakill.explosionhit")
+                points = PluginSettings.DirectHitStylePoints;
         }
     }
 

@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>GrenadeLauncher</AssemblyName>
     <RootNamespace>GrenadeLauncherMod</RootNamespace>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <ManagedDir>$(GameDir)\ULTRAKILL_Data\Managed</ManagedDir>
   </PropertyGroup>

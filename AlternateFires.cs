@@ -57,6 +57,7 @@ namespace GrenadeLauncherMod
         private static FloatSliderField moonShotStylePoints;
         private static FloatSliderField outSnipedStylePoints;
         private static FloatSliderField walkingBombStylePoints;
+        private static FloatSliderField directHitStylePoints;
         private static FloatSliderField pipeDreamDamageMultiplier;
         private static FloatSliderField pipeDreamExplosionSizeMultiplier;
         private static FloatSliderField moonShotDamageMultiplier;
@@ -68,8 +69,8 @@ namespace GrenadeLauncherMod
         internal static float GreenUpwardVelocityMultiplier => greenUpwardVelocity?.value ?? 1f;
         internal static float GreenGravityMultiplier => greenGravity?.value ?? 1f;
         internal static float GreenDirectDamage => greenDirectDamage?.value ?? 6f;
-        internal static float GreenAirshotDamage => greenAirshotDamage?.value ?? 7.5f;
-        internal static float GreenSurfaceDamage => greenSurfaceDamage?.value ?? 4f;
+        internal static float GreenAirshotDamage => greenAirshotDamage?.value ?? 8f;
+        internal static float GreenSurfaceDamage => greenSurfaceDamage?.value ?? 4.5f;
         internal static float GreenDirectExplosionSize => greenDirectExplosionSize?.value ?? 1.4f;
         internal static float GreenAirshotExplosionSize => greenAirshotExplosionSize?.value ?? 1.5f;
         internal static float GreenSurfaceExplosionSize => greenSurfaceExplosionSize?.value ?? 1f;
@@ -82,17 +83,17 @@ namespace GrenadeLauncherMod
         internal static float GelCoveragePerDroplet => (gelCoveragePerDroplet?.value ?? 4f) / 100f;
         internal static float GelCoverageRequired => (gelCoverageRequired?.value ?? 75f) / 100f;
         internal static float GelSpotSize => gelSpotSize?.value ?? 1.25f;
-        internal static float StuckDamage => stuckDamage?.value ?? 4f;
+        internal static float StuckDamage => stuckDamage?.value ?? 4.5f;
         internal static float GreenStuckDamage => greenStuckDamage?.value ?? 6f;
         internal static float StuckExplosionSize => stuckExplosionSize?.value ?? 1.3f;
-        internal static float StuckSelfDamage => stuckSelfDamage?.value ?? 45f;
+        internal static float StuckSelfDamage => stuckSelfDamage?.value ?? 35f;
         internal static float StuckKnockbackMultiplier => stuckKnockback?.value ?? 1f;
         internal static float StuckChainRadiusMultiplier => stuckChainRadius?.value ?? 2f;
         internal static float StuckChainPropagationSpeed => stuckChainPropagationSpeed?.value ?? 50f;
         internal static bool EnemyCarrierTakesDirectDamage => enemyCarrierDirectDamage?.value ?? true;
         internal static bool TimedFuseDetonatesStuck => timedFuseDetonatesStuck?.value ?? false;
 
-        internal static float BlueDistance => blueDistance?.value ?? 27f;
+        internal static float BlueDistance => blueDistance?.value ?? 20f;
         internal static float BlueCooldown => blueCooldown?.value ?? 4f;
         internal static float BlueSlingshotForce => blueSlingshotForce?.value ?? 0f;
         internal static float BluePointSize => bluePointSize?.value ?? 1f;
@@ -106,6 +107,7 @@ namespace GrenadeLauncherMod
         internal static int MoonShotStylePoints => Mathf.RoundToInt(moonShotStylePoints?.value ?? 550f);
         internal static int OutSnipedStylePoints => Mathf.RoundToInt(outSnipedStylePoints?.value ?? 550f);
         internal static int WalkingBombStylePoints => Mathf.RoundToInt(walkingBombStylePoints?.value ?? 90f);
+        internal static int DirectHitStylePoints => Mathf.RoundToInt(directHitStylePoints?.value ?? 35f);
         internal static float PipeDreamDamageMultiplier => pipeDreamDamageMultiplier?.value ?? 1f;
         internal static float PipeDreamExplosionSizeMultiplier => pipeDreamExplosionSizeMultiplier?.value ?? 1f;
         internal static float MoonShotDamageMultiplier => moonShotDamageMultiplier?.value ?? 1.15f;
@@ -121,8 +123,8 @@ namespace GrenadeLauncherMod
             greenUpwardVelocity = Slider(green, "Upward velocity multiplier", "greenUpwardVelocityMultiplier", 0f, 5f, 1f, 2);
             greenGravity = Slider(green, "Gravity multiplier", "greenGravityMultiplier", 0.1f, 5f, 1f, 2);
             greenDirectDamage = Slider(green, "Direct hit damage", "greenDirectDamage", 0f, 20f, 6f, 2);
-            greenAirshotDamage = Slider(green, "Airshot damage", "greenAirshotDamage", 0f, 25f, 7.5f, 2);
-            greenSurfaceDamage = Slider(green, "Surface contact damage", "greenSurfaceDamage", 0f, 20f, 4f, 2);
+            greenAirshotDamage = Slider(green, "Airshot damage", "greenAirshotDamage", 0f, 25f, 8f, 2);
+            greenSurfaceDamage = Slider(green, "Surface contact damage", "greenSurfaceDamage", 0f, 20f, 4.5f, 2);
             greenDirectExplosionSize = Slider(green, "Direct explosion size (rocket = 1)", "greenDirectExplosionSize", 0.1f, 5f, 1.4f, 2);
             greenAirshotExplosionSize = Slider(green, "Airshot explosion size", "greenAirshotExplosionSize", 0.1f, 5f, 1.5f, 2);
             greenSurfaceExplosionSize = Slider(green, "Surface explosion size (rocket = 1)", "greenSurfaceExplosionSize", 0.1f, 5f, 1f, 2);
@@ -137,10 +139,10 @@ namespace GrenadeLauncherMod
             gelCoveragePerDroplet = Slider(gel, "Enemy coverage per droplet (%)", "gelCoveragePerDroplet", 0.1f, 100f, 4f, 1);
             gelCoverageRequired = Slider(gel, "Enemy coverage required (%)", "gelCoverageRequired", 0f, 100f, 75f, 1);
             gelSpotSize = Slider(gel, "Terrain gel size (normal = 1)", "gelSpotSize", 0.1f, 5f, 1.25f, 2);
-            stuckDamage = Slider(gel, "Primary stuck grenade damage", "stuckDamage", 0f, 20f, 4f, 2);
+            stuckDamage = Slider(gel, "Primary stuck grenade damage", "stuckDamage", 0f, 20f, 4.5f, 2);
             greenStuckDamage = Slider(gel, "Green stuck grenade damage", "greenStuckDamage", 0f, 20f, 6f, 2);
             stuckExplosionSize = Slider(gel, "Stuck explosion size (rocket = 1)", "stuckExplosionSize", 0.1f, 5f, 1.3f, 2);
-            stuckSelfDamage = Slider(gel, "Stuck explosion self damage (HP)", "stuckSelfDamage", 0f, 100f, 45f, 0);
+            stuckSelfDamage = Slider(gel, "Stuck explosion self damage (HP)", "stuckSelfDamage", 0f, 100f, 35f, 0);
             stuckKnockback = Slider(gel, "Stuck explosion knockback (rocket = 1)", "stuckKnockbackMultiplier", 0f, 5f, 1f, 2);
             stuckChainRadius = Slider(gel, "Stuck grenade chain radius multiplier", "stuckChainRadiusMultiplier", 0f, 10f, 2f, 2);
             stuckChainPropagationSpeed = Slider(gel, "Chain propagation speed (units/second)", "stuckChainPropagationSpeed", 1f, 200f, 50f, 1);
@@ -149,7 +151,7 @@ namespace GrenadeLauncherMod
 
             ConfigPanel blue = new ConfigPanel(configurator.rootPanel, "Blue slingshot point", "blueSlingshotPoint");
             AddPageResetButton(blue, "Reset this page to default", "resetBlueSlingshotPoint");
-            blueDistance = Slider(blue, "Placement distance", "bluePlacementDistance", 5.5f, 200f, 27f, 1);
+            blueDistance = Slider(blue, "Placement distance", "bluePlacementDistance", 5.5f, 200f, 20f, 1);
             blueCooldown = Slider(blue, "Cooldown (seconds)", "blueCooldown", 0.05f, 10f, 4f, 2);
             blueSlingshotForce = Slider(blue, "Extra slingshot force", "blueSlingshotForce", -50f, 200f, 0f, 1);
             bluePointSize = Slider(blue, "Hook point size multiplier", "bluePointSize", 0.25f, 4f, 1f, 2);
@@ -166,6 +168,7 @@ namespace GrenadeLauncherMod
             moonShotStylePoints = Slider(style, "MOON SHOT style points", "moonShotStylePoints", 0f, 10000f, 550f, 0);
             outSnipedStylePoints = Slider(style, "OUT-SNIPED style points", "outSnipedStylePoints", 0f, 10000f, 550f, 0);
             walkingBombStylePoints = Slider(style, "WALKING BOMB style points", "walkingBombStylePoints", 0f, 5000f, 90f, 0);
+            directHitStylePoints = Slider(style, "Direct-hit base style points", "directHitStylePoints", 0f, 5000f, 35f, 0);
             pipeDreamDamageMultiplier = Slider(style, "PIPE DREAM damage multiplier", "pipeDreamDamageMultiplier", 0f, 10f, 1f, 2);
             pipeDreamExplosionSizeMultiplier = Slider(style, "PIPE DREAM explosion size multiplier", "pipeDreamExplosionSizeMultiplier", 0.1f, 10f, 1f, 2);
             moonShotDamageMultiplier = Slider(style, "MOON SHOT damage multiplier", "moonShotDamageMultiplier", 0f, 10f, 1.15f, 2);
@@ -412,7 +415,10 @@ namespace GrenadeLauncherMod
                 return;
 
             bool continuingGreenVolley = launcher.variation == 1 && Time.frameCount == greenVolleyFrame;
-            if (!RocketCooldownSync.Ready(launcher) && !continuingGreenVolley)
+            // Vanilla allows a newly pressed alternate input during draw-out. Its
+            // primary-shot cooldown still starts normally after that shot.
+            bool freshAltDuringDraw = altPressedThisFrame && (float)SinceEquipped(launcher) < EquipHeldAltDelay;
+            if (!RocketCooldownSync.Ready(launcher) && !continuingGreenVolley && !freshAltDuringDraw)
                 return;
             if (launcher.variation == 1 && (CooldownRules.NoWeaponCooldown || Time.time >= greenReadyAt || continuingGreenVolley))
             {
@@ -1241,6 +1247,21 @@ namespace GrenadeLauncherMod
             }
         }
 
+        // HookArm only retains caughtHook for a short slingshot window. Mark usage from
+        // HookPoint.Hooked as well as polling it, so a pink point cannot slip through
+        // the poll and restore unlimited vertical placement.
+        internal static void MarkGeneratedHookUsed(HookPoint hook)
+        {
+            if (hook == null || hook.GetComponentInParent<GeneratedBlueHookOwnership>() == null)
+                return;
+
+            currentHook = hook;
+            currentHookUsed = true;
+            creationLockedUntilGround = true;
+            NewMovement movement = MonoSingleton<NewMovement>.Instance;
+            leftGroundSinceHookUse = movement == null || movement.gc == null || !movement.gc.onGround;
+        }
+
         internal static void CompleteDelivery(Vector3 point)
         {
             PlayDeleteEffect(point);
@@ -1635,6 +1656,7 @@ namespace GrenadeLauncherMod
         private void TurnPink()
         {
             pink = true;
+            EnsureSlingshotState();
             if (hitscanCollider != null)
                 hitscanCollider.enabled = true;
             if (piercingHitscanCollider != null)
@@ -1672,6 +1694,31 @@ namespace GrenadeLauncherMod
                 particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             }
 
+        }
+
+        internal void EnsureSlingshotState()
+        {
+            HookPoint hook = GetComponentInChildren<HookPoint>(true);
+            if (hook == null)
+                return;
+            hook.active = true;
+            hook.type = hookPointType.Slingshot;
+        }
+    }
+
+    // HookArm checks this field after calling HookPoint.Hooked.  Enforce the generated
+    // point's native blue/slingshot type at that exact boundary so pink visual work can
+    // never leave it behaving like a normal (green) hook point.
+    [HarmonyPatch(typeof(HookPoint), nameof(HookPoint.Hooked))]
+    internal static class GeneratedPinkHookSlingshotPatch
+    {
+        private static void Prefix(HookPoint __instance)
+        {
+            PinkHookPointMarker marker = __instance != null
+                ? __instance.GetComponentInParent<PinkHookPointMarker>()
+                : null;
+            marker?.EnsureSlingshotState();
+            HookPointManager.MarkGeneratedHookUsed(__instance);
         }
     }
 
