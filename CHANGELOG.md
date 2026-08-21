@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+This mod before this update did 4 damage every 0.6s with the primary fire. This was the same as the shotgun hot-swap dps so i thought it was good. Then i realized you could make the damage on a shotgun turn into 9.75 instead of 3. Hoo boy the purpose of this weapon is begining to be questioned. Im sure some playstyles (shotgunless) would probably still benifit from the weapon so i boosted the damage across the board slightly to help make it more in-line, even though its probably still pretty pointless when you look at everything else you could do. Of course not everyone has your 10,000 hours of experience and game-knoladge.
+
+- Fixed pink blue-hook points occasionally behaving as normal/green hook points when hooked.
+- Blue and green alternates can now fire from a fresh right-click during draw-out, while an already-held right-click still waits for the draw animation.
+- Added configurable direct-hit base style points, defaulting to 35.
+- Rebalanced default grenade damage, airshot damage, surface damage, gel-stuck damage, self damage, blue placement distance, and Gutterman/Guttertank/Hideous Mass damage values.
+- Existing configurations migrate only values that exactly matched a released default; customized values stay unchanged.
+
 ## 1.1.1
 
 - Fixed generated blue hook points being reused before the player leaves the ground and lands, preventing infinite vertical movement.
