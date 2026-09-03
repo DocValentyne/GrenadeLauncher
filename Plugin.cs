@@ -1,11 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using BepInEx;
-using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using PluginConfig.API;
@@ -19,18 +17,20 @@ namespace GrenadeLauncherMod
 {
     [BepInPlugin(Guid, Name, Version)]
     [BepInDependency("com.eternalUnion.pluginConfigurator")]
+    // Thunderstore installs ConductionFix from manifest.json. Keep this soft so manual
+    // installations remain playable if a player intentionally removes it.
+    [BepInDependency("ali.uk.conductionfix", BepInDependency.DependencyFlags.SoftDependency)]
     public sealed class Plugin : BaseUnityPlugin
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "1.2.0";
+        public const string Version = "2.0.0";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }
+        internal GrenadeLauncherState State => state;
 
-        private readonly Dictionary<int, ConfigEntry<bool>> slotLoadouts = new Dictionary<int, ConfigEntry<bool>>();
-        private readonly Dictionary<string, ConfigEntry<bool>> variantLoadouts = new Dictionary<string, ConfigEntry<bool>>();
-        private readonly Dictionary<int, ConfigEntry<bool>> variantMigrations = new Dictionary<int, ConfigEntry<bool>>();
+        private GrenadeLauncherState state;
         private Harmony harmony;
         private GameObject runtimeHost;
 
@@ -40,10 +40,10 @@ namespace GrenadeLauncherMod
                 return false;
 
             int slot = Math.Max(0, GameProgressSaver.currentSlot);
-            ConfigEntry<bool> migrated = GetVariantMigrationEntry(slot);
-            if (!migrated.Value)
-                return GetSlotEntry(slot).Value;
-            return GetVariantEntry(slot, variation).Value;
+            SlotLoadoutState loadout = GetSlotState(slot);
+            if (!loadout.Migrated)
+                return loadout.LegacyEnabled;
+            return loadout.GetVariant(variation);
         }
 
         internal bool IsGrenadeModeEnabled(RocketLauncher launcher) =>
@@ -54,10 +54,10 @@ namespace GrenadeLauncherMod
             get
             {
                 int slot = Math.Max(0, GameProgressSaver.currentSlot);
-                ConfigEntry<bool> migrated = GetVariantMigrationEntry(slot);
-                if (!migrated.Value)
-                    return GetSlotEntry(slot).Value;
-                return GetVariantEntry(slot, 0).Value || GetVariantEntry(slot, 1).Value || GetVariantEntry(slot, 2).Value;
+                SlotLoadoutState loadout = GetSlotState(slot);
+                if (!loadout.Migrated)
+                    return loadout.LegacyEnabled;
+                return loadout.GetVariant(0) || loadout.GetVariant(1) || loadout.GetVariant(2);
             }
         }
 
@@ -67,22 +67,22 @@ namespace GrenadeLauncherMod
                 return;
             int slot = Math.Max(0, GameProgressSaver.currentSlot);
             EnsureVariantMigration();
-            GetVariantEntry(slot, variation).Value = enabled;
-            Config.Save();
+            GetSlotState(slot).SetVariant(variation, enabled);
+            state.Save();
         }
 
         internal void EnsureVariantMigration()
         {
             int slot = Math.Max(0, GameProgressSaver.currentSlot);
-            ConfigEntry<bool> migrated = GetVariantMigrationEntry(slot);
-            if (migrated.Value)
+            SlotLoadoutState loadout = GetSlotState(slot);
+            if (loadout.Migrated)
                 return;
 
-            bool legacyEnabled = GetSlotEntry(slot).Value;
+            bool legacyEnabled = loadout.LegacyEnabled;
             for (int variation = 0; variation < 3; variation++)
-                GetVariantEntry(slot, variation).Value = legacyEnabled;
-            migrated.Value = true;
-            Config.Save();
+                loadout.SetVariant(variation, legacyEnabled);
+            loadout.Migrated = true;
+            state.Save();
             Logger.LogInfo("Migrated the old all-rocket loadout to per-variant Grenade Launcher choices for save slot " + slot + ".");
         }
 
@@ -90,6 +90,7 @@ namespace GrenadeLauncherMod
         {
             Instance = this;
             LogSource = Logger;
+            state = GrenadeLauncherState.Load(Config.ConfigFilePath);
 
             PluginSettings.Initialize();
 
@@ -101,6 +102,7 @@ namespace GrenadeLauncherMod
             runtimeHost.hideFlags = HideFlags.HideAndDontSave;
             runtimeHost.AddComponent<TerminalIntegration>();
             runtimeHost.AddComponent<AlternateFireRuntime>();
+            runtimeHost.AddComponent<WeaponVisualRuntime>();
 
             Logger.LogInfo("Grenade Launcher v" + Version + " loaded.");
         }
@@ -120,47 +122,136 @@ namespace GrenadeLauncherMod
                 LogSource = null;
         }
 
-        private ConfigEntry<bool> GetSlotEntry(int slot)
+        private SlotLoadoutState GetSlotState(int slot)
         {
-            if (slot < 0)
-                slot = 0;
-
-            if (!slotLoadouts.TryGetValue(slot, out ConfigEntry<bool> entry))
-            {
-                entry = Config.Bind(
-                    "Loadout",
-                    "SaveSlot" + slot + "UsesGrenadeLauncher",
-                    false,
-                    "Equip Grenade Launcher primary fire for all three Rocket Launcher variants in this save slot.");
-                slotLoadouts.Add(slot, entry);
-            }
-
-            return entry;
+            return state.GetSlot(Math.Max(0, slot));
         }
 
-        private ConfigEntry<bool> GetVariantEntry(int slot, int variation)
+    }
+
+    [Serializable]
+    internal sealed class SlotLoadoutState
+    {
+        public int Slot;
+        public bool LegacyEnabled;
+        public bool Migrated;
+        public bool Blue;
+        public bool Green;
+        public bool Red;
+
+        internal bool GetVariant(int variation) => variation == 0 ? Blue : variation == 1 ? Green : Red;
+        internal void SetVariant(int variation, bool value)
         {
-            string key = slot + ":" + variation;
-            if (!variantLoadouts.TryGetValue(key, out ConfigEntry<bool> entry))
+            if (variation == 0) Blue = value;
+            else if (variation == 1) Green = value;
+            else if (variation == 2) Red = value;
+        }
+    }
+
+    [Serializable]
+    internal sealed class GrenadeLauncherState
+    {
+        public int BalanceDefaultsVersion;
+        public int VisualCalibrationDefaultsVersion;
+        public List<SlotLoadoutState> Slots = new List<SlotLoadoutState>();
+
+        [NonSerialized] private string statePath;
+
+        internal static GrenadeLauncherState Load(string oldConfigPath)
+        {
+            string directory = Path.GetDirectoryName(oldConfigPath) ?? BepInEx.Paths.ConfigPath;
+            string statePath = Path.Combine(directory, "docvalentyne.ultrakill.grenadelauncher.state.json");
+            GrenadeLauncherState result = null;
+            try
             {
-                entry = Config.Bind("Loadout", "SaveSlot" + slot + "RocketVariant" + variation + "UsesGrenadeLauncher",
-                    false, "Use the alternate Grenade Launcher form for this Rocket Launcher variant.");
-                variantLoadouts.Add(key, entry);
+                if (File.Exists(statePath))
+                    result = JsonUtility.FromJson<GrenadeLauncherState>(File.ReadAllText(statePath));
             }
-            return entry;
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not read Grenade Launcher internal state: " + exception.Message);
+            }
+            if (result == null)
+            {
+                result = new GrenadeLauncherState();
+                result.ImportOldConfig(oldConfigPath);
+            }
+            result.statePath = statePath;
+            result.Save();
+            return result;
         }
 
-        private ConfigEntry<bool> GetVariantMigrationEntry(int slot)
+        internal SlotLoadoutState GetSlot(int slot)
         {
-            if (!variantMigrations.TryGetValue(slot, out ConfigEntry<bool> entry))
-            {
-                entry = Config.Bind("Loadout", "SaveSlot" + slot + "PerVariantLoadoutMigrated", false,
-                    "Whether the old all-rocket setting has been copied to the native per-variant terminal controls.");
-                variantMigrations.Add(slot, entry);
-            }
-            return entry;
+            SlotLoadoutState found = Slots.FirstOrDefault(item => item != null && item.Slot == slot);
+            if (found != null)
+                return found;
+            found = new SlotLoadoutState { Slot = slot };
+            Slots.Add(found);
+            return found;
         }
 
+        internal void Save()
+        {
+            if (string.IsNullOrEmpty(statePath))
+                return;
+            try
+            {
+                File.WriteAllText(statePath, JsonUtility.ToJson(this, true));
+            }
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not save Grenade Launcher internal state: " + exception.Message);
+            }
+        }
+
+        private void ImportOldConfig(string oldConfigPath)
+        {
+            if (!File.Exists(oldConfigPath))
+                return;
+            try
+            {
+                string section = string.Empty;
+                foreach (string raw in File.ReadAllLines(oldConfigPath))
+                {
+                    string line = raw.Trim();
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        section = line.Substring(1, line.Length - 2);
+                        continue;
+                    }
+                    if (section != "Loadout" || !line.Contains("="))
+                        continue;
+                    string[] pair = line.Split(new[] { '=' }, 2);
+                    string key = pair[0].Trim();
+                    bool value;
+                    if (!bool.TryParse(pair[1].Trim(), out value))
+                        continue;
+                    const string prefix = "SaveSlot";
+                    if (!key.StartsWith(prefix))
+                        continue;
+                    int numberStart = prefix.Length;
+                    int numberEnd = key.IndexOfAny(new[] { 'U', 'R', 'P' }, numberStart);
+                    int slot;
+                    if (numberEnd <= numberStart || !int.TryParse(key.Substring(numberStart, numberEnd - numberStart), out slot))
+                        continue;
+                    SlotLoadoutState loadout = GetSlot(slot);
+                    if (key.EndsWith("UsesGrenadeLauncher"))
+                    {
+                        if (key.Contains("RocketVariant0")) loadout.Blue = value;
+                        else if (key.Contains("RocketVariant1")) loadout.Green = value;
+                        else if (key.Contains("RocketVariant2")) loadout.Red = value;
+                        else loadout.LegacyEnabled = value;
+                    }
+                    else if (key.EndsWith("PerVariantLoadoutMigrated"))
+                        loadout.Migrated = value;
+                }
+            }
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not migrate old Grenade Launcher loadout config: " + exception.Message);
+            }
+        }
     }
 
     // Grenade Launcher scores are still stored in the player's local save, but must not be
@@ -181,6 +272,7 @@ namespace GrenadeLauncherMod
     {
         Primary,
         GreenContact,
+        RedBurst,
         BlueDelivery
     }
 
@@ -267,7 +359,11 @@ namespace GrenadeLauncherMod
     internal static class RocketLauncherEquipCooldownPatch
     {
         [HarmonyPriority(Priority.Last)]
-        private static void Postfix(RocketLauncher __instance) => RocketCooldownSync.ApplyWhenEquipped(__instance);
+        private static void Postfix(RocketLauncher __instance)
+        {
+            RocketCooldownSync.ApplyWhenEquipped(__instance);
+            WeaponVisualRuntime.RegisterLauncher(__instance);
+        }
     }
 
     [HarmonyPatch(typeof(RocketLauncher), nameof(RocketLauncher.Shoot))]
@@ -283,7 +379,11 @@ namespace GrenadeLauncherMod
             internal bool DualWieldDuplicate;
             internal bool NotifyGreenPrimary;
             internal bool NotifyBluePrimary;
+            internal GrenadeProjectileProfile ProjectileProfile;
             internal float RateOfFire;
+            internal AudioSource VanillaShotAudio;
+            internal bool VanillaShotAudioMuted;
+            internal bool VanillaShotAudioOriginalMute;
         }
 
         private static bool Prefix(RocketLauncher __instance, out State __state)
@@ -295,10 +395,28 @@ namespace GrenadeLauncherMod
             {
                 Active = grenadeMode,
                 DualWieldDuplicate = dualWieldDuplicate,
+                ProjectileProfile = GrenadeSpawnContext.Active
+                    ? GrenadeSpawnContext.Profile
+                    : GrenadeProjectileProfile.Primary,
                 RateOfFire = __instance.rateOfFire,
             };
             if (!__state.Active)
                 return true;
+
+            // Custom presentation supplies its own configurable firing audio. Mute only
+            // the immediate vanilla shot here; its delayed Clunk callback is suppressed
+            // separately below. The original mute state is restored in every finalizer
+            // path, including an exception in RocketLauncher.Shoot.
+            if (WeaponVisualRuntime.ShouldReplaceVanillaShotFeedback(__instance))
+            {
+                __state.VanillaShotAudio = WeaponVisualRuntime.GetVanillaShotAudio(__instance);
+                if (__state.VanillaShotAudio != null)
+                {
+                    __state.VanillaShotAudioOriginalMute = __state.VanillaShotAudio.mute;
+                    __state.VanillaShotAudio.mute = true;
+                    __state.VanillaShotAudioMuted = true;
+                }
+            }
 
             __instance.rateOfFire = PluginSettings.FireInterval;
             if (!GrenadeSpawnContext.Active)
@@ -314,8 +432,19 @@ namespace GrenadeLauncherMod
         private static Exception Finalizer(RocketLauncher __instance, State __state, Exception __exception)
         {
             Restore(__instance, __state);
+            if (__state.VanillaShotAudioMuted && __state.VanillaShotAudio != null)
+            {
+                // Mute prevents the native Play call from being audible, but unmuting a
+                // source while that clip is still playing makes it resume mid-shot.
+                // Stop it before restoring the prior state so only the selected custom
+                // sound list can be heard.
+                __state.VanillaShotAudio.Stop();
+                __state.VanillaShotAudio.mute = __state.VanillaShotAudioOriginalMute;
+            }
             if (__exception == null && !__state.DualWieldDuplicate)
                 RocketCooldownSync.ApplyAfterShot(__instance, __state.Active);
+            if (__exception == null && __state.Active)
+                WeaponVisualRuntime.NotifyShot(__instance, __state.ProjectileProfile);
             if (__exception == null && __state.NotifyGreenPrimary)
                 AlternateFireController.OnGreenPrimaryFired();
             if (__exception == null && __state.NotifyBluePrimary)
@@ -340,6 +469,167 @@ namespace GrenadeLauncherMod
         private static bool Prefix()
         {
             return !GrenadeSpawnContext.Active;
+        }
+    }
+
+    // The RocketLauncher animation invokes Clunk after a shot. It instantiates the
+    // return-to-position sound and adds a second, small camera shake. The custom model
+    // does not use that return sound or the related native recoil motion, so remove the
+    // entire callback only while custom grenade-launcher visuals are active.
+    [HarmonyPatch(typeof(RocketLauncher), nameof(RocketLauncher.Clunk))]
+    internal static class GrenadeLauncherClunkPatch
+    {
+        private static bool Prefix(RocketLauncher __instance)
+        {
+            return !WeaponVisualRuntime.ShouldReplaceVanillaShotFeedback(__instance);
+        }
+    }
+
+    // A Jackhammer turns a struck grenade into a RevolverBeam.  The native beam uses
+    // one field for both enemy damage and player self-damage (the latter is damage *
+    // 10), but it also exposes an enemy-only override.  Tag custom grenades for the
+    // one frame where GrenadeBeam creates that beam, then split the two values in its
+    // Start prefix without affecting ordinary rockets or other beams.
+    [HarmonyPatch(typeof(Grenade), nameof(Grenade.GrenadeBeam))]
+    internal static class GrenadeLauncherJackhammerGrenadeBeamTagPatch
+    {
+        private const string TagPrefix = "grenadelauncher-jackhammer|";
+
+        private struct State
+        {
+            internal bool Tagged;
+            internal string OriginalHitter;
+        }
+
+        private static void Prefix(Grenade __instance, GameObject newSourceWeapon, out State __state)
+        {
+            __state = new State();
+            if (__instance == null || __instance.GetComponent<GrenadeLauncherProjectile>() == null ||
+                newSourceWeapon == null || newSourceWeapon.GetComponentInParent<ShotgunHammer>() == null)
+                return;
+
+            __state.Tagged = true;
+            __state.OriginalHitter = __instance.hitterWeapon;
+            __instance.hitterWeapon = TagPrefix + (__state.OriginalHitter ?? string.Empty);
+        }
+
+        private static void Postfix(Grenade __instance, State __state)
+        {
+            if (__state.Tagged && __instance != null)
+                __instance.hitterWeapon = __state.OriginalHitter;
+        }
+
+        internal static bool TryApply(RevolverBeam beam)
+        {
+            if (beam == null || string.IsNullOrEmpty(beam.hitterOverride) ||
+                !beam.hitterOverride.StartsWith(TagPrefix, StringComparison.Ordinal))
+                return false;
+
+            // Restore the original hit name before the beam shoots, so kill/style
+            // attribution remains exactly what the grenade had before the hammer hit.
+            beam.hitterOverride = beam.hitterOverride.Substring(TagPrefix.Length);
+            int selfDamage = Mathf.RoundToInt(Mathf.Max(0f, PluginSettings.JackhammerGrenadeSelfDamage));
+            GrenadeLauncherJackhammerBeamMarker marker = beam.gameObject.AddComponent<GrenadeLauncherJackhammerBeamMarker>();
+            marker.SelfDamage = selfDamage;
+            beam.damage = selfDamage / 10f;
+            beam.enemyDamageOverride = Mathf.Max(0f, PluginSettings.JackhammerGrenadeDamage);
+            return true;
+        }
+    }
+
+    internal sealed class GrenadeLauncherJackhammerBeamMarker : MonoBehaviour
+    {
+        internal int SelfDamage;
+    }
+
+    internal static class GrenadeLauncherJackhammerBeamDamageContext
+    {
+        private static readonly Stack<int> selfDamageStack = new Stack<int>();
+        private static float delayedExplosionOverrideEndsAt;
+
+        internal static bool Active => selfDamageStack.Count > 0;
+        internal static int SelfDamage => Active ? selfDamageStack.Peek() : 0;
+        internal static bool IsDelayedExplosionOverrideActive => Time.time <= delayedExplosionOverrideEndsAt;
+
+        internal static void StartDelayedExplosionOverride()
+        {
+            delayedExplosionOverrideEndsAt = Time.time + 2f;
+        }
+
+        internal static bool Enter(RevolverBeam beam)
+        {
+            GrenadeLauncherJackhammerBeamMarker marker = beam != null
+                ? beam.GetComponent<GrenadeLauncherJackhammerBeamMarker>()
+                : null;
+            if (marker == null)
+                return false;
+            selfDamageStack.Push(marker.SelfDamage);
+            StartDelayedExplosionOverride();
+            return true;
+        }
+
+        internal static void Exit(bool entered)
+        {
+            if (entered && selfDamageStack.Count > 0)
+                selfDamageStack.Pop();
+        }
+    }
+
+    [HarmonyPatch(typeof(RevolverBeam), "Start")]
+    internal static class GrenadeLauncherJackhammerGrenadeBeamDamagePatch
+    {
+        private static void Prefix(RevolverBeam __instance)
+        {
+            GrenadeLauncherJackhammerGrenadeBeamTagPatch.TryApply(__instance);
+        }
+    }
+
+    [HarmonyPatch(typeof(RevolverBeam), nameof(RevolverBeam.ExecuteHits))]
+    internal static class GrenadeLauncherJackhammerBeamDamageContextPatch
+    {
+        private static void Prefix(RevolverBeam __instance, out bool __state)
+        {
+            __state = GrenadeLauncherJackhammerBeamDamageContext.Enter(__instance);
+        }
+
+        private static Exception Finalizer(bool __state, Exception __exception)
+        {
+            GrenadeLauncherJackhammerBeamDamageContext.Exit(__state);
+            return __exception;
+        }
+    }
+
+    [HarmonyPatch(typeof(NewMovement), nameof(NewMovement.GetHurt))]
+    internal static class GrenadeLauncherJackhammerSelfDamagePatch
+    {
+        [HarmonyPriority(Priority.Last)]
+        private static void Prefix(ref int damage)
+        {
+            if (GrenadeLauncherJackhammerBeamDamageContext.Active)
+                damage = GrenadeLauncherJackhammerBeamDamageContext.SelfDamage;
+        }
+    }
+
+    [HarmonyPatch(typeof(Explosion), "Collide")]
+    internal static class GrenadeLauncherJackhammerDelayedExplosionDamagePatch
+    {
+        private static void Prefix(Explosion __instance, Collider other)
+        {
+            if (__instance == null || other == null || !other.CompareTag("Player"))
+                return;
+
+            string source = __instance.sourceWeapon != null ? __instance.sourceWeapon.name : "<none>";
+            bool isHammerSawExplosion = __instance.rocketExplosion && source.StartsWith("Hammer Saw", StringComparison.Ordinal);
+            bool isCustomJackhammerExplosion = GrenadeLauncherJackhammerBeamDamageContext.IsDelayedExplosionOverrideActive &&
+                isHammerSawExplosion;
+            if (isCustomJackhammerExplosion)
+            {
+                // The native beam's visual explosion occurs after ExecuteHits has
+                // returned. Keep the window narrow so the configured custom-grenade
+                // self damage reaches that delayed native player hit.
+                int configuredDamage = Mathf.RoundToInt(Mathf.Max(0f, PluginSettings.JackhammerGrenadeSelfDamage));
+                __instance.playerDamageOverride = configuredDamage;
+            }
         }
     }
 
@@ -436,8 +726,8 @@ namespace GrenadeLauncherMod
         private static FloatSliderField directSelfDamage;
         private static FloatSliderField surfaceSelfDamage;
         private static FloatSliderField parrySelfDamage;
-        private static BoolField eyeHeightScaling;
-        private static FloatSliderField fallbackEyeHeight;
+        private static FloatSliderField jackhammerGrenadeDamage;
+        private static FloatSliderField jackhammerGrenadeSelfDamage;
         private static Texture2D configuratorIconTexture;
         private static Sprite configuratorIconSprite;
         private static readonly Dictionary<EnemyType, FloatSliderField> enemyDamageMultipliers =
@@ -445,9 +735,9 @@ namespace GrenadeLauncherMod
         private static readonly Dictionary<EnemyType, float> releaseEnemyDamageDefaults =
             new Dictionary<EnemyType, float>
             {
-                { EnemyType.Cerberus, 120f },
+                { EnemyType.Cerberus, 100f },
                 { EnemyType.Gutterman, 120f },
-                { EnemyType.Guttertank, 120f },
+                { EnemyType.Guttertank, 100f },
                 { EnemyType.HideousMass, 100f },
                 { EnemyType.MaliciousFace, 100f },
                 { EnemyType.Mannequin, 200f },
@@ -475,8 +765,12 @@ namespace GrenadeLauncherMod
         internal static float DirectSelfDamage => directSelfDamage?.value ?? 35f;
         internal static float SurfaceSelfDamage => surfaceSelfDamage?.value ?? 25f;
         internal static float ParrySelfDamage => parrySelfDamage?.value ?? 30f;
-        internal static bool EyeHeightScaling => eyeHeightScaling?.value ?? true;
-        internal static float FallbackEyeHeight => fallbackEyeHeight?.value ?? 2.9f;
+        internal static float JackhammerGrenadeDamage => jackhammerGrenadeDamage?.value ?? 10f;
+        internal static float JackhammerGrenadeSelfDamage => jackhammerGrenadeSelfDamage?.value ?? 35f;
+        // These are fixed gameplay constants rather than player-facing calibration.
+        // The trajectory captures the player's launch gravity once per projectile.
+        internal static readonly bool EyeHeightScaling = true;
+        internal const float FallbackEyeHeight = 2.9f;
 
         internal static float GetEnemyDamageMultiplier(EnemyType enemyType)
         {
@@ -502,7 +796,7 @@ namespace GrenadeLauncherMod
             ApplyConfiguratorIcon(configurator);
             new PluginConfig.API.Decorators.ConfigHeader(
                 configurator.rootPanel,
-                "Get comfortable with the weapon before changing its settings.");
+                "Detailed weapon documentation available on the Wiki tab in the Thunderstore mod page.");
             AddPageResetButton(configurator.rootPanel, "Reset all pages to default", "resetAllPages", true, configurator);
             AddPageResetButton(configurator.rootPanel, "Reset this page to default", "resetMainPage", false, configurator);
 
@@ -521,19 +815,22 @@ namespace GrenadeLauncherMod
             customGravity = Slider(configurator, "Custom gravity multiplier", "customGravityMultiplier", 0.1f, 5f, 1f, 2);
             fireInterval = Slider(configurator, "Fire interval (seconds)", "fireInterval", 0.1f, 2f, 0.6f, 2);
             explosionSize = Slider(configurator, "Explosion size (rocket = 1)", "explosionSizeMultiplier", 0.25f, 3f, 0.9f, 2);
-            knockback = Slider(configurator, "Explosion knockback (rocket = 1)", "knockbackMultiplier", 0f, 3f, 1f, 2);
+            knockback = Slider(configurator, "Blast knockback (Rocket = 1)", "knockbackMultiplier", 0f, 3f, 1f, 2);
             lifetime = Slider(configurator, "Silent projectile lifetime", "projectileLifetime", 1f, 60f, 15f, 1);
-            stuckLifetime = Slider(configurator, "Stuck grenade lifetime (seconds)", "stuckLifetime", 1f, 300f, 60f, 1);
+            stuckLifetime = Slider(configurator, "Stuck lifetime (seconds)", "stuckLifetime", 1f, 300f, 60f, 1);
             surfaceFuse = Slider(configurator, "Surface fuse (seconds)", "surfaceFuse", 0.1f, 10f, 1f, 2);
-            hookFuseGrace = Slider(configurator, "Fuse time added per Whiplash hook (seconds)", "hookFuseGrace", 0f, 2f, 0.1f, 2);
+            hookFuseGrace = Slider(configurator, "Fuse time per Whiplash (s)", "hookFuseGrace", 0f, 2f, 0.1f, 2);
             surfaceDamage = Slider(configurator, "Surface detonation damage", "surfaceDamage", 0f, 10f, 3f, 2);
             bounceRetention = Slider(configurator, "Surface bounce speed retention", "bounceRetention", 0f, 1f, 0.1f, 2);
             parryDamage = Slider(configurator, "Parried grenade damage", "parryDamage", 0f, 20f, 4.5f, 2);
-            parryExplosionSize = Slider(configurator, "Parried explosion size (rocket = 1)", "parryExplosionSize", 0.25f, 5f, 1f, 2);
-            parrySpeed = Slider(configurator, "Parried projectile speed multiplier", "parrySpeedMultiplier", 0.1f, 5f, 3f, 2);
-            directSelfDamage = Slider(configurator, "Direct explosion self damage (HP)", "directSelfDamage", 0f, 100f, 35f, 0);
-            surfaceSelfDamage = Slider(configurator, "Timed explosion self damage (HP)", "surfaceSelfDamage", 0f, 100f, 25f, 0);
-            parrySelfDamage = Slider(configurator, "Parried explosion self damage (HP)", "parrySelfDamage", 0f, 100f, 30f, 0);
+            parryExplosionSize = Slider(configurator, "Parried blast size (Rocket = 1)", "parryExplosionSize", 0.25f, 5f, 1f, 2);
+            parrySpeed = Slider(configurator, "Parried speed multiplier", "parrySpeedMultiplier", 0.1f, 5f, 3f, 2);
+            directSelfDamage = Slider(configurator, "Direct self-damage (HP)", "directSelfDamage", 0f, 100f, 35f, 0);
+            surfaceSelfDamage = Slider(configurator, "Timed self-damage (HP)", "surfaceSelfDamage", 0f, 100f, 25f, 0);
+            parrySelfDamage = Slider(configurator, "Parried self-damage (HP)", "parrySelfDamage", 0f, 100f, 30f, 0);
+
+            jackhammerGrenadeDamage = Slider(configurator, "Jackhammer hit damage", "jackhammerGrenadeDamage", 0f, 50f, 10f, 2);
+            jackhammerGrenadeSelfDamage = Slider(configurator, "Jackhammer self-damage (HP)", "jackhammerGrenadeSelfDamage", 0f, 100f, 35f, 0);
 
             // Older builds exposed this as a second preset. Preserve existing configs by
             // migrating it to custom gravity at its old 2x value, while removing it from UI.
@@ -543,13 +840,8 @@ namespace GrenadeLauncherMod
                 customGravity.value = 2f;
             }
 
-            ConfigPanel calibration = new ConfigPanel(configurator.rootPanel, "Debug / trajectory calibration", "debugTrajectoryCalibration");
-            calibration.headerText = "Only change these when diagnosing trajectory calibration.";
-            AddPageResetButton(calibration, "Reset this page to default", "resetDebugTrajectoryCalibration");
-            eyeHeightScaling = new BoolField(calibration, "Use eye-height calibration", "eyeHeightScaling", true);
-            fallbackEyeHeight = Slider(calibration, "Fallback V1 eye height", "fallbackEyeHeight", 0.5f, 10f, 2.9f, 2);
-
             InitializeAlternateSettings(configurator);
+            WeaponVisualRuntime.InitializeConfiguration(configurator);
             ConfigPanel enemyPanel = new ConfigPanel(
                 configurator.rootPanel,
                 "Enemy grenade damage",
@@ -755,36 +1047,74 @@ namespace GrenadeLauncherMod
 
         private static void MigrateBalanceDefaults(PluginConfigurator configurator)
         {
-            ConfigEntry<int> defaultsVersion = Plugin.Instance.Config.Bind(
-                "Migration",
-                "DefaultsVersion",
-                0,
-                "Internal version used to apply changed defaults once without overwriting later customization.");
-
-            if (defaultsVersion.Value >= 3)
+            GrenadeLauncherState state = Plugin.Instance != null ? Plugin.Instance.State : null;
+            if (state == null)
                 return;
 
-            // Only replace exact values shipped by a prior public version. Any other
-            // value is deliberate player tuning and must stay untouched.
-            ReplaceReleasedDefault(damage, 4.5f, 3f, 4f);
-            ReplaceReleasedDefault(airshotDamage, 7f, 6f);
-            ReplaceReleasedDefault(surfaceDamage, 3f, 2.5f);
-            ReplaceReleasedDefault(greenAirshotDamage, 8f, 7.5f);
-            ReplaceReleasedDefault(greenSurfaceDamage, 4.5f, 4f);
-            ReplaceReleasedDefault(stuckDamage, 4.5f, 4f);
-            ReplaceReleasedDefault(stuckSelfDamage, 35f, 45f);
-            ReplaceReleasedDefault(blueDistance, 20f, 27f);
+            if (state.BalanceDefaultsVersion < 4)
+            {
+                // Only replace exact values shipped by a prior public version. Any other
+                // value is deliberate player tuning and must stay untouched.
+                ReplaceReleasedDefault(damage, 4.5f, 3f, 4f);
+                ReplaceReleasedDefault(airshotDamage, 7f, 6f);
+                ReplaceReleasedDefault(surfaceDamage, 3f, 2.5f);
+                ReplaceReleasedDefault(greenAirshotDamage, 8f, 7.5f);
+                ReplaceReleasedDefault(greenSurfaceDamage, 4.5f, 4f);
+                ReplaceReleasedDefault(stuckDamage, 4.5f, 4f);
+                ReplaceReleasedDefault(stuckSelfDamage, 35f, 45f);
+                ReplaceReleasedDefault(blueDistance, 20f, 27f);
 
-            ReplaceEnemyReleasedDefault(EnemyType.Gutterman, 120f, 100f, 110f);
-            ReplaceEnemyReleasedDefault(EnemyType.Guttertank, 120f, 100f);
-            ReplaceEnemyReleasedDefault(EnemyType.HideousMass, 100f, 80f, 85f, 90f);
+                ReplaceEnemyReleasedDefault(EnemyType.Gutterman, 120f, 100f, 110f);
+                ReplaceEnemyReleasedDefault(EnemyType.Guttertank, 120f, 100f);
+                ReplaceEnemyReleasedDefault(EnemyType.HideousMass, 100f, 80f, 85f, 90f);
 
-            defaultsVersion.Value = 3;
+                // 2.0.0 changes two settings that existed in 1.2.0. As with earlier
+                // balance migrations, update only exact old release defaults.
+                ReplaceReleasedDefault(pinkArmingDelay, 2.5f, 2f);
+                ReplaceReleasedDefault(enemyCarrierDirectDamage, false, true);
+                state.BalanceDefaultsVersion = 4;
+            }
+
+            if (state.BalanceDefaultsVersion < 5)
+            {
+                // 2.0.0 beta: split one pink timer into first-arm and re-arm behavior.
+                // The two fields intentionally retain their previous config IDs.
+                ReplaceReleasedDefault(pinkArmingDelay, 2.25f, 2f, 2.5f);
+                ReplaceReleasedDefault(pinkConductionArmingDelay, 3f, 4f);
+                state.BalanceDefaultsVersion = 5;
+            }
+
+            if (state.BalanceDefaultsVersion < 6)
+            {
+                // Final 2.0.0 defaults. As above, only exact former defaults are
+                // replaced so deliberate player tuning is never overwritten.
+                ReplaceReleasedDefault(gelEnemyFireRadius, 2.5f, 3f);
+                ReplaceReleasedDefault(redBurstCooldown, 4.5f, 5f);
+                ReplaceReleasedDefault(blueMaximumHookPoints, 1f, 3f);
+                ReplaceReleasedDefault(blueGreenHookPoints, 0f, 1f);
+                ReplaceReleasedDefault(blueKnuckleblasterRefundsCooldown, true, false);
+                ReplaceReleasedDefault(pinkConductionArmingDelay, 3.5f, 3f);
+                ReplaceReleasedDefault(pinkConductionRearmDelay, 5f, 4f);
+                ReplacePinkBlastReleasedDefault(EnemyType.Drone, 50f, 100f);
+                ReplacePinkBlastReleasedDefault(EnemyType.Soldier, 60f, 100f);
+                ReplacePinkBlastReleasedDefault(EnemyType.Stalker, 75f, 100f);
+                ReplacePinkBlastReleasedDefault(EnemyType.Stray, 35f, 100f);
+                state.BalanceDefaultsVersion = 6;
+            }
+
+            if (state.BalanceDefaultsVersion < 7)
+            {
+                // 2.0.0 release tuning: retain an explicit player choice, but replace
+                // the prior published 120% defaults for these two enemies.
+                ReplaceEnemyReleasedDefault(EnemyType.Cerberus, 100f, 120f);
+                ReplaceEnemyReleasedDefault(EnemyType.Guttertank, 100f, 120f);
+                state.BalanceDefaultsVersion = 7;
+            }
             // Plugin Configurator owns these fields in a separate config file. Flush it
             // before marking this one-time migration complete, otherwise a successful
             // BepInEx save could leave old slider values on disk.
             configurator?.FlushAll();
-            Plugin.Instance.Config.Save();
+            state.Save();
         }
 
         private static void ReplaceReleasedDefault(FloatSliderField field, float replacement, params float[] releasedValues)
@@ -794,9 +1124,22 @@ namespace GrenadeLauncherMod
             field.value = replacement;
         }
 
+        private static void ReplaceReleasedDefault(BoolField field, bool replacement, params bool[] releasedValues)
+        {
+            if (field == null || !releasedValues.Contains(field.value))
+                return;
+            field.value = replacement;
+        }
+
         private static void ReplaceEnemyReleasedDefault(EnemyType enemyType, float replacement, params float[] releasedValues)
         {
             if (enemyDamageMultipliers.TryGetValue(enemyType, out FloatSliderField field))
+                ReplaceReleasedDefault(field, replacement, releasedValues);
+        }
+
+        private static void ReplacePinkBlastReleasedDefault(EnemyType enemyType, float replacement, params float[] releasedValues)
+        {
+            if (pinkBlastEnemyDamageMultipliers.TryGetValue(enemyType, out FloatSliderField field))
                 ReplaceReleasedDefault(field, replacement, releasedValues);
         }
 
@@ -826,6 +1169,7 @@ namespace GrenadeLauncherMod
                 GrenadeLauncherProjectile projectile = __instance.gameObject.AddComponent<GrenadeLauncherProjectile>();
                 projectile.Grenade = __instance;
                 projectile.Profile = GrenadeSpawnContext.Profile;
+                WeaponVisualRuntime.AttachProjectileVisual(__instance, GrenadeSpawnContext.Profile);
             }
         }
     }
@@ -927,13 +1271,14 @@ namespace GrenadeLauncherMod
         private static bool Prefix(Explosion __instance, Collider other, out State __state)
         {
             __state = new State();
-            GrenadeLauncherExplosionMarker marker = __instance.GetComponentInParent<GrenadeLauncherExplosionMarker>();
-            GrenadeLauncherProjectile stuckProjectile = other != null
-                ? other.GetComponentInParent<GrenadeLauncherProjectile>()
-                : null;
+            // Schism barrages invoke this once per orb/collider. Both maps are O(1);
+            // avoid GetComponentInParent hierarchy walks for every vanilla collision.
+            GrenadeLauncherExplosionMarker marker = GrenadeLauncherExplosionMarker.TryGet(__instance);
+            GrenadeLauncherProjectile stuckProjectile = GrenadeLauncherProjectile.TryGetStuckProjectile(other);
             if (stuckProjectile != null && stuckProjectile.IsStuck)
             {
-                if (marker != null && marker.Mode == GrenadeExplosionMode.Surface && !PluginSettings.TimedFuseDetonatesStuck)
+                if (marker != null && (marker.Mode == GrenadeExplosionMode.Surface || marker.Mode == GrenadeExplosionMode.GreenSurface) &&
+                    !PluginSettings.TimedFuseDetonatesStuck)
                     return false;
                 if (IsPlayerExplosion(__instance))
                     stuckProjectile.DetonateStuck();
@@ -1017,7 +1362,6 @@ namespace GrenadeLauncherMod
             {
                 __state.Marker.TryAwardLongRangeStyle(__state.Enemy);
                 __state.Marker.TryAwardWalkingBomb(__state.Enemy);
-                __state.Marker.QueueDirectHitTelemetry(__state.Enemy);
             }
             return __exception;
         }
@@ -1045,11 +1389,9 @@ namespace GrenadeLauncherMod
         }
     }
 
-    // The Providence hook-point visual contains a PhysicalShockwave for its launch
-    // effect.  That component routes enemy damage through the normal Enemy hurt path,
-    // which also spawns blood and plays hurt/splatter audio.  Keep the native damage and
-    // knockback, but mark only our replacement shockwaves so those cosmetic responses can
-    // be suppressed without changing ordinary explosions.
+    // The Providence hook-point visual contains a PhysicalShockwave. Its visual update
+    // is required, but collision would add a second damage/force event. Mark only our
+    // replacement shockwaves, then skip their collision method entirely.
     internal sealed class GrenadeLauncherBlueShockwaveMarker : MonoBehaviour
     {
     }
@@ -1076,15 +1418,11 @@ namespace GrenadeLauncherMod
         {
             __state = __instance != null &&
                       __instance.GetComponentInParent<GrenadeLauncherBlueShockwaveMarker>() != null;
-            if (__state)
-                GrenadeLauncherBlueShockwaveContext.Enter();
-            return true;
+            return !__state;
         }
 
         private static Exception Finalizer(bool __state, Exception __exception)
         {
-            if (__state)
-                GrenadeLauncherBlueShockwaveContext.Exit();
             return __exception;
         }
     }
@@ -1199,11 +1537,11 @@ namespace GrenadeLauncherMod
 
     internal sealed class GrenadeLauncherExplosionMarker : MonoBehaviour
     {
+        private static readonly Dictionary<int, GrenadeLauncherExplosionMarker> ActiveRoots =
+            new Dictionary<int, GrenadeLauncherExplosionMarker>();
         private readonly HashSet<int> manuallyDamagedEnemies = new HashSet<int>();
         private readonly HashSet<int> styleAwardedEnemies = new HashSet<int>();
         private bool walkingBombAwarded;
-        private bool telemetryQueued;
-        private EnemyIdentifier telemetryEnemy;
 
         internal bool Parried;
         internal GrenadeExplosionMode Mode;
@@ -1223,6 +1561,32 @@ namespace GrenadeLauncherMod
         internal bool Airshot;
         internal bool BlueHookReplacement;
 
+        private int rootId;
+
+        private void Awake()
+        {
+            rootId = transform.root != null ? transform.root.GetInstanceID() : gameObject.GetInstanceID();
+            ActiveRoots[rootId] = this;
+        }
+
+        private void OnDestroy()
+        {
+            if (rootId != 0 && ActiveRoots.TryGetValue(rootId, out GrenadeLauncherExplosionMarker marker) && marker == this)
+                ActiveRoots.Remove(rootId);
+        }
+
+        internal static GrenadeLauncherExplosionMarker TryGet(Explosion explosion)
+        {
+            if (explosion == null)
+                return null;
+            int id = explosion.transform.root != null
+                ? explosion.transform.root.GetInstanceID()
+                : explosion.gameObject.GetInstanceID();
+            return ActiveRoots.TryGetValue(id, out GrenadeLauncherExplosionMarker marker) && marker != null
+                ? marker
+                : null;
+        }
+
         internal void TryAwardLongRangeStyle(EnemyIdentifier enemy)
         {
             if (enemy == null || LongRangeStyle == GrenadeLongRangeStyle.None ||
@@ -1240,34 +1604,6 @@ namespace GrenadeLauncherMod
                 return;
             walkingBombAwarded = true;
             GrenadeStyleAwards.AwardWalkingBomb(StuckChainGroupId, enemy, SourceWeapon);
-        }
-
-        internal void QueueDirectHitTelemetry(EnemyIdentifier enemy)
-        {
-            if (!PluginSettings.RangeTelemetryEnabled || telemetryQueued || enemy == null || DirectEnemyId == 0 ||
-                enemy.GetInstanceID() != DirectEnemyId)
-                return;
-            telemetryQueued = true;
-            telemetryEnemy = enemy;
-            StartCoroutine(LogDirectHitTelemetryAtEndOfFrame());
-        }
-
-        private IEnumerator LogDirectHitTelemetryAtEndOfFrame()
-        {
-            yield return new WaitForEndOfFrame();
-            string enemyType = telemetryEnemy != null ? telemetryEnemy.enemyType.ToString() : "Destroyed";
-            bool killed = telemetryEnemy == null || telemetryEnemy.dead;
-            float ratio = TheoreticalSameHeightRange > 0.001f
-                ? DirectPlanarDistance / TheoreticalSameHeightRange
-                : 0f;
-            string profile = DirectProfile == GrenadeProjectileProfile.GreenContact ? "GREEN" : "PRIMARY";
-            Plugin.LogSource?.LogInfo(
-                $"[RangeTelemetry] {profile} direct hit | " +
-                $"planar={DirectPlanarDistance:0.###}u | straight={DirectStraightDistance:0.###}u | " +
-                $"launchElevation={LaunchElevationDegrees:0.###}deg | " +
-                $"calculatedSameHeightMax={TheoreticalSameHeightRange:0.###}u | ratio={ratio:0.###} | " +
-                $"styleThreshold={ConfiguredStyleThreshold:0.###}u | " +
-                $"enemy={enemyType} | killed={killed}");
         }
 
         internal void DamageBlockedEnemy(EnemyIdentifier enemy, Collider hitCollider)
@@ -1294,12 +1630,16 @@ namespace GrenadeLauncherMod
         private const float Tf2UpwardSpeedHu = 200f;
         private const float Tf2GravityHu = 800f;
         private static int nextChainGroupId;
+        private static readonly Dictionary<int, GrenadeLauncherProjectile> StuckColliderOwners =
+            new Dictionary<int, GrenadeLauncherProjectile>();
+        private static readonly Collider[] TerrainTrapOverlapBuffer = new Collider[24];
 
         internal Grenade Grenade;
         internal GrenadeProjectileProfile Profile;
         internal bool CanBeWhiplashed => Profile == GrenadeProjectileProfile.Primary && bounced && !stuck && !finished;
         internal bool IsStuck => stuck && !finished;
         internal int ChainGroupId => chainGroupId;
+        internal int StuckHostEnemyId => stuckHostEnemyId;
 
         private Rigidbody body;
         private readonly List<CustomGravity> customGravityComponents = new List<CustomGravity>(1);
@@ -1311,9 +1651,13 @@ namespace GrenadeLauncherMod
         private bool parried;
         private bool stuck;
         private int stuckHostEnemyId;
+        private EnemyIdentifier stuckHostEnemy;
+        private Vector3 stuckHostLocalPosition;
+        private Quaternion stuckHostLocalRotation = Quaternion.identity;
         private int chainGroupId;
         private bool wasHooked;
         private GelStainMarker stuckGelStain;
+        private Collider stuckGelSurface;
         private GelCoverage stuckGelCoverage;
         private float launchForwardSpeed;
         private float launchElevationDegrees;
@@ -1331,10 +1675,6 @@ namespace GrenadeLauncherMod
         private Vector3 simulatedVelocity;
         private Vector3 lastVelocity;
         private Quaternion lastFixedRotation;
-        private static bool loggedTrajectory;
-        private static bool loggedExplosion;
-        private static bool loggedPortalRotation;
-        private static bool loggedRejectedExternalChange;
 
         internal void Launch()
         {
@@ -1413,21 +1753,49 @@ namespace GrenadeLauncherMod
                     parryReceiver.enabled = false;
             }
 
-            if (!loggedTrajectory)
-            {
-                loggedTrajectory = true;
-                Plugin.LogSource.LogInfo(
-                    $"TF2 trajectory converted from V1 eye height {eyeHeight:0.###}: " +
-                    $"forward {launchForwardSpeed:0.###} u/s, up {upwardSpeed:0.###} u/s, " +
-                    $"captured gravity {capturedGravity} u/s².");
-            }
         }
 
         private void OnDestroy()
         {
             if (parryReceiver != null && parryReceiver.onParry != null)
                 parryReceiver.onParry.RemoveListener(Parry);
+            UnregisterStuckCollisionLookup();
             GelSystem.UnregisterStuck(this);
+        }
+
+        internal static GrenadeLauncherProjectile TryGetStuckProjectile(Collider collider)
+        {
+            if (collider == null)
+                return null;
+            int id = collider.GetInstanceID();
+            if (!StuckColliderOwners.TryGetValue(id, out GrenadeLauncherProjectile projectile) ||
+                projectile == null || !projectile.IsStuck)
+            {
+                StuckColliderOwners.Remove(id);
+                return null;
+            }
+            return projectile;
+        }
+
+        private void RegisterStuckCollisionLookup()
+        {
+            foreach (Collider collider in ownColliders)
+            {
+                if (collider != null)
+                    StuckColliderOwners[collider.GetInstanceID()] = this;
+            }
+        }
+
+        private void UnregisterStuckCollisionLookup()
+        {
+            foreach (Collider collider in ownColliders)
+            {
+                if (collider == null)
+                    continue;
+                int id = collider.GetInstanceID();
+                if (StuckColliderOwners.TryGetValue(id, out GrenadeLauncherProjectile projectile) && projectile == this)
+                    StuckColliderOwners.Remove(id);
+            }
         }
 
         private void FixedUpdate()
@@ -1437,6 +1805,12 @@ namespace GrenadeLauncherMod
 
             if (stuck)
             {
+                MaintainStuckHostAnchor();
+                if (TryDetonateTerrainTrapFromEnemyWalkover())
+                {
+                    DetonateStuck();
+                    return;
+                }
                 if (Time.time - stuckBornAt >= Mathf.Max(1f, PluginSettings.StuckLifetime))
                 {
                     FinishSilently();
@@ -1512,23 +1886,6 @@ namespace GrenadeLauncherMod
                 capturedGravity = portalDelta * capturedGravity;
             }
 
-            if (portalRotation && !loggedPortalRotation)
-            {
-                loggedPortalRotation = true;
-                Plugin.LogSource.LogInfo(
-                    "Detected a seamless portal transform; rotating the captured launch trajectory and gravity. " +
-                    $"expected {expectedVelocity}, actual {actualVelocity}, " +
-                    $"rigidbody gravity={body.useGravity}, world gravity={Physics.gravity}.");
-            }
-            else if (externalChange && !portalRotation && !loggedRejectedExternalChange)
-            {
-                loggedRejectedExternalChange = true;
-                Plugin.LogSource.LogWarning(
-                    "Rejected an external grenade velocity change to preserve the custom trajectory: " +
-                    $"expected {expectedVelocity}, actual {actualVelocity}, " +
-                    $"rigidbody gravity={body.useGravity}, world gravity={Physics.gravity}.");
-            }
-
             LockNativeGravity();
             if (!parried)
                 simulatedVelocity += capturedGravity * Time.fixedDeltaTime;
@@ -1540,6 +1897,52 @@ namespace GrenadeLauncherMod
                 transform.rotation = Quaternion.LookRotation(simulatedVelocity.normalized, visualUp);
             }
             lastFixedRotation = transform.rotation;
+        }
+
+        private void LateUpdate()
+        {
+            // Gabriel movement may write transforms after physics. A second render-frame
+            // lock prevents a gel grenade from visibly drifting away between fixed ticks.
+            if (stuck && !finished)
+                MaintainStuckHostAnchor();
+        }
+
+        private void MaintainStuckHostAnchor()
+        {
+            if (stuckHostEnemy == null || stuckHostEnemy.dead)
+                return;
+
+            Transform host = stuckHostEnemy.transform;
+            Vector3 position = host.TransformPoint(stuckHostLocalPosition);
+            Quaternion rotation = host.rotation * stuckHostLocalRotation;
+            if (body != null)
+            {
+                body.position = position;
+                body.rotation = rotation;
+            }
+            else
+            {
+                transform.SetPositionAndRotation(position, rotation);
+            }
+        }
+
+        private bool TryDetonateTerrainTrapFromEnemyWalkover()
+        {
+            // Enemy-gel grenades are deliberately excluded: only a grenade embedded in a
+            // terrain gel stain becomes a pressure trap. The inexpensive overlap happens
+            // only while the optional setting is on.
+            if (!PluginSettings.TerrainStuckDetonatesOnEnemyWalkover || stuckHostEnemy != null || stuckGelStain == null)
+                return false;
+
+            int count = Physics.OverlapSphereNonAlloc(transform.position, 0.85f, TerrainTrapOverlapBuffer,
+                ~0, QueryTriggerInteraction.Collide);
+            for (int index = 0; index < count; index++)
+            {
+                EnemyIdentifier enemy = TryGetLivingEnemy(TerrainTrapOverlapBuffer[index]);
+                if (enemy != null)
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsMagnitudePreservingRotation(Vector3 before, Vector3 after)
@@ -1602,10 +2005,8 @@ namespace GrenadeLauncherMod
 
             if (Profile == GrenadeProjectileProfile.Primary)
             {
-                Glass glass = other.GetComponentInParent<Glass>();
-                if (glass != null)
+                if (TryBreakAndPassThrough(other))
                 {
-                    glass.Shatter();
                     foreach (Collider ownCollider in ownColliders)
                     {
                         if (ownCollider != null && ownCollider != other)
@@ -1664,6 +2065,28 @@ namespace GrenadeLauncherMod
 
             EnemyIdentifier enemy = other.GetComponentInParent<EnemyIdentifier>();
             return enemy != null && !enemy.dead ? enemy : null;
+        }
+
+        // Use the same object flags normal explosion code respects. We deliberately do
+        // not force precision/special/ignore-explosion breakables: primary grenades only
+        // pass through scenery that a normal Rocket surface explosion is allowed to break.
+        private static bool TryBreakAndPassThrough(Collider other)
+        {
+            Breakable breakable = other != null ? other.GetComponentInParent<Breakable>() : null;
+            if (breakable != null && !breakable.unbreakable && !breakable.ignoreExplosions &&
+                !breakable.precisionOnly && !breakable.specialCaseOnly && !breakable.accurateExplosionsOnly)
+            {
+                breakable.Break();
+                return true;
+            }
+
+            Glass glass = other != null ? other.GetComponentInParent<Glass>() : null;
+            if (glass != null)
+            {
+                glass.Shatter();
+                return true;
+            }
+            return false;
         }
 
         private void Bounce(
@@ -1836,7 +2259,9 @@ namespace GrenadeLauncherMod
             stuck = true;
             stuckBornAt = Time.time;
             stuckHostEnemyId = hostEnemy != null ? hostEnemy.GetInstanceID() : 0;
+            stuckHostEnemy = hostEnemy;
             stuckGelStain = gelStain;
+            stuckGelSurface = gelStain != null ? gelStain.Surface : null;
             stuckGelCoverage = gelCoverage;
             bounced = false;
             parried = false;
@@ -1857,11 +2282,23 @@ namespace GrenadeLauncherMod
             if (point == Vector3.zero && surface != null)
                 point = surface.bounds.ClosestPoint(transform.position);
             transform.position = point + normal * 0.05f;
-            Transform parent = surface != null && surface.attachedRigidbody != null
-                ? surface.attachedRigidbody.transform
-                : surface != null ? surface.transform : null;
+            // Enemy hitboxes may sit below a moving animation/physics child. Parenting
+            // a gel grenade to that collider leaves it behind during Gabriel teleports
+            // and Cerberus dashes. The EnemyIdentifier root is the stable transform for
+            // every hostile movement mode, while terrain keeps its original parent.
+            Transform parent = hostEnemy != null
+                ? hostEnemy.transform
+                : surface != null && surface.attachedRigidbody != null
+                    ? surface.attachedRigidbody.transform
+                    : surface != null ? surface.transform : null;
             if (parent != null)
                 transform.SetParent(parent, true);
+            if (stuckHostEnemy != null)
+            {
+                Transform host = stuckHostEnemy.transform;
+                stuckHostLocalPosition = host.InverseTransformPoint(transform.position);
+                stuckHostLocalRotation = Quaternion.Inverse(host.rotation) * transform.rotation;
+            }
 
             if (!body.isKinematic)
             {
@@ -1871,6 +2308,7 @@ namespace GrenadeLauncherMod
             body.useGravity = false;
             body.constraints = RigidbodyConstraints.FreezeAll;
             body.isKinematic = true;
+            RegisterStuckCollisionLookup();
             GelSystem.RegisterStuck(this);
         }
 
@@ -1917,7 +2355,9 @@ namespace GrenadeLauncherMod
             switch (mode)
             {
                 case GrenadeExplosionMode.Direct:
-                    damage = PluginSettings.Damage;
+                    damage = Profile == GrenadeProjectileProfile.RedBurst
+                        ? PluginSettings.RedBurstDirectDamage
+                        : PluginSettings.Damage;
                     sizeMultiplier = PluginSettings.ExplosionSizeMultiplier;
                     selfDamage = PluginSettings.DirectSelfDamage;
                     knockbackMultiplier = PluginSettings.KnockbackMultiplier;
@@ -1949,7 +2389,9 @@ namespace GrenadeLauncherMod
                 default:
                     damage = Profile == GrenadeProjectileProfile.GreenContact
                         ? PluginSettings.GreenStuckDamage
-                        : PluginSettings.StuckDamage;
+                        : Profile == GrenadeProjectileProfile.RedBurst
+                            ? (stuckHostEnemyId != 0 ? PluginSettings.RedBurstEnemyDamage : PluginSettings.RedBurstTerrainDamage)
+                            : PluginSettings.StuckDamage;
                     sizeMultiplier = PluginSettings.StuckExplosionSize;
                     selfDamage = PluginSettings.StuckSelfDamage;
                     knockbackMultiplier = PluginSettings.StuckKnockbackMultiplier;
@@ -1960,7 +2402,9 @@ namespace GrenadeLauncherMod
             {
                 damage = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotDamage
-                    : PluginSettings.AirshotDamage;
+                    : Profile == GrenadeProjectileProfile.RedBurst
+                        ? PluginSettings.RedBurstAirshotDamage
+                        : PluginSettings.AirshotDamage;
                 sizeMultiplier = Profile == GrenadeProjectileProfile.GreenContact
                     ? PluginSettings.GreenAirshotExplosionSize
                     : PluginSettings.AirshotExplosionSize;
@@ -2009,14 +2453,6 @@ namespace GrenadeLauncherMod
                 Explosion[] explosions = blast.GetComponentsInChildren<Explosion>(true);
                 foreach (Explosion explosion in explosions)
                 {
-                    if (!loggedExplosion)
-                    {
-                        loggedExplosion = true;
-                        Plugin.LogSource.LogInfo(
-                            $"Vanilla rocket explosion baseline: damage {explosion.damage}, " +
-                            $"enemy multiplier {explosion.enemyDamageMultiplier:0.###}, " +
-                            $"push {explosion.pushForceMultiplier:0.###}, radius {explosion.maxSize:0.###}.");
-                    }
                     explosion.sourceWeapon = Grenade.sourceWeapon;
                     if (explosion.damage > 0)
                         explosion.damage = Mathf.RoundToInt(Mathf.Max(0f, damage) * 10f);
@@ -2044,6 +2480,8 @@ namespace GrenadeLauncherMod
 
             if (mode == GrenadeExplosionMode.Stuck)
             {
+                GelSystem.ApplyStuckDetonationFire(stuckGelStain, stuckGelSurface, stuckGelCoverage, stuckHostEnemyId,
+                    transform.position, visibleRadius);
                 GelSystem.Consume(stuckGelStain, stuckGelCoverage, transform.position, visibleRadius);
                 GelSystem.TriggerChain(transform.position, this, visibleRadius);
             }
@@ -2127,10 +2565,7 @@ namespace GrenadeLauncherMod
 
             float measured = TryMeasure();
             if (measured > 0f)
-            {
                 cachedEyeHeight = measured;
-                Plugin.LogSource.LogInfo($"Calibrated standing V1 eye height once: {cachedEyeHeight:0.###} Unity units.");
-            }
         }
 
         internal static float GetEyeHeight()
@@ -2167,9 +2602,8 @@ namespace GrenadeLauncherMod
                 float measured = cameraController.transform.position.y - movement.playerCollider.bounds.min.y;
                 return measured >= 0.5f && measured <= 10f ? measured : -1f;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                Plugin.LogSource.LogDebug("Could not measure V1 eye height: " + exception.Message);
                 return -1f;
             }
         }
@@ -2318,4 +2752,5 @@ namespace GrenadeLauncherMod
             listeners.Clear();
         }
     }
+
 }

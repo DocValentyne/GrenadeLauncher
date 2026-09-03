@@ -1,7 +1,19 @@
 # Changelog
 
+## 2.0.0
+
+Ignore the rant from the last changelog I found out how to make the weapons good and interesting. Who knew it would be adding tech in a game where 99% of the weapons have tech.
+
+- Added the custom Grenade Launcher viewmodel, authored animations, projectile models, and custom firing sounds. A visual setting can restore vanilla Rocket Launcher visuals and sounds.
+- Added Red burst system, and Pink slingshot-point system pulling andconducting enemies, and Knuckleblaster destroying it.
+- Added more plugin configurator settings such as color settings for the new model
+- Cerberus and Guttertank grenade damage defaults are now 100% (previously 120%).
+- Existing configurations migrate only values that exactly matched a previous default; customized values remain unchanged.
+- All the other things i forgot about. Many bug fixes im sure.
+
 ## 1.2.0
 
+(This rant is now outdated and WRONG!!!)
 This mod before this update did 4 damage every 0.6s with the primary fire. This was the same as the shotgun hot-swap dps so i thought it was good. Then i realized you could make the damage on a shotgun turn into 9.75 instead of 3. Hoo boy the purpose of this weapon is begining to be questioned. Im sure some playstyles (shotgunless) would probably still benifit from the weapon so i boosted the damage across the board slightly to help make it more in-line, even though its probably still pretty pointless when you look at everything else you could do. Of course not everyone has your 10,000 hours of experience and game-knoladge.
 
 - Fixed pink blue-hook points occasionally behaving as normal/green hook points when hooked.

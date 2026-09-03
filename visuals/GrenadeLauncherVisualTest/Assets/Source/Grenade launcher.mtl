@@ -1,0 +1,96 @@
+newmtl Barrel1Mtl
+Material Color
+Ka 0.00258583 0.00258583 0.00258583
+Kd 0.00258583 0.00258583 0.00258583
+Ks 0.000162248 0.000162248 0.000162248 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+
+newmtl Body1Mtl
+Material Color
+Ka 0.124741 0.113921 0.121986
+Kd 0.124741 0.113921 0.121986
+Ks 0.00782688 0.00714798 0.00765401 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+
+newmtl Backside1Mtl
+Material Color
+Ka 0.00715504 0.018913 0.0315514
+Kd 0.00715504 0.018913 0.0315514
+Ks 0.000448943 0.0011867 0.0019797 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+
+newmtl Cooldownbox1Mtl
+Material Color
+Ka 0.940601 0.940601 0.940601
+Kd 0.940601 0.940601 0.940601
+Ks 0.0590181 0.0590181 0.0590181 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+
+newmtl IronsightBottom1Mtl
+Material Color
+Ka 0.14198 0.133209 0.106156
+Kd 0.14198 0.133209 0.106156
+Ks 0.00890857 0.00835818 0.00666077 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+
+newmtl PaddingLeft1Mtl
+Material Color
+Ka 0.103634 0.108711 0.14198
+Kd 0.103634 0.108711 0.14198
+Ks 0.00650253 0.00682109 0.00890857 
+
+d 1
+
+Ns 0
+
+map_Ka Barrel1_diff.png
+map_Kd Barrel1_diff.png
+map_d Barrel1_diff.png
+
+map_Bump Barrel1_nmap.png
+

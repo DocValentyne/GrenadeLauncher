@@ -19,3 +19,20 @@ startup-trace.txt
 *.suo
 .DS_Store
 Thumbs.db
+
+# Unity visual-test project cache (the source assets and project settings remain tracked).
+visuals/**/Library/
+visuals/**/Temp/
+visuals/**/Logs/
+visuals/**/obj/
+visuals/**/UserSettings/
+visuals/**/PreviewRenders/
+visuals/**/BuiltAssetBundles/
+visuals/**/*.log
+
+# Local reverse-engineering output and duplicate visual-source exports.
+# The maintained Unity source project lives under visuals/.
+_ilspy_temp/
+Grenade launcher model/
+references/
+Updated icon.png
