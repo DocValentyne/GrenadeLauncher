@@ -24,7 +24,7 @@ namespace GrenadeLauncherMod
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "2.0.0";
+        public const string Version = "2.0.1";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }

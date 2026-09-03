@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1
+
+- Fixed the Wiki banner image not displaying on the Thunderstore README.
+
 ## 2.0.0
 
 Ignore the rant from the last changelog I found out how to make the weapons good and interesting. Who knew it would be adding tech in a game where 99% of the weapons have tech.

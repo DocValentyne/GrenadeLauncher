@@ -2,7 +2,7 @@
 
 Detailed weapon documentation is available in the Wiki tab on the Thunderstore mod page.
 
-[![See the Thunderstore Wiki tab for detailed weapon documentation.](Wiki%20tab%20notice.png)](https://thunderstore.io/c/ultrakill/p/DocValentyne/Grenade_Launcher/wiki/)
+[![See the Thunderstore Wiki tab for detailed weapon documentation.](https://raw.githubusercontent.com/DocValentyne/GrenadeLauncher/3b87a19/Wiki%20tab%20notice.png)](https://thunderstore.io/c/ultrakill/p/DocValentyne/Grenade_Launcher/wiki/)
 
 Grenade Launcher is a BepInEx 5 mod for ULTRAKILL by DocValentyne. It adds a terminal-selectable alternate form for all three Rocket Launcher variants, with new primary and alternate fires.
 
