@@ -17,6 +17,7 @@ namespace GrenadeLauncherMod
     {
         private const string BundleResourceName = "GrenadeLauncherMod.visuals";
         private const string PrefabName = "GrenadeLauncher_CustomPreview";
+        private const string BlueProjectileTextureResourceName = "GrenadeLauncherMod.projectile.blue.png";
 
         private static FloatSliderField modelScale;
         private static FloatSliderField offsetX;
@@ -65,6 +66,7 @@ namespace GrenadeLauncherMod
         private static WeaponVisualRuntime activeRuntime;
         private AssetBundle visualBundle;
         private GameObject visualPrefab;
+        private Texture2D blueProjectileTexture;
         private float nextCleanupScan;
 
         internal static void InitializeConfiguration(PluginConfigurator configurator)
@@ -191,6 +193,8 @@ namespace GrenadeLauncherMod
             instances.Clear();
             if (visualBundle != null)
                 visualBundle.Unload(false);
+            if (blueProjectileTexture != null)
+                Destroy(blueProjectileTexture);
             if (activeRuntime == this)
                 activeRuntime = null;
         }
@@ -206,9 +210,24 @@ namespace GrenadeLauncherMod
             activeRuntime?.AttachLauncher(launcher);
         }
 
+        internal static void CleanupDualWieldCloneVisual(RocketLauncher launcher)
+        {
+            activeRuntime?.CleanupDualWieldCloneVisualInternal(launcher);
+        }
+
+        internal static void RefreshLauncherPaint(RocketLauncher launcher)
+        {
+            activeRuntime?.RefreshLauncherPaintInternal(launcher);
+        }
+
         internal static void NotifyShot(RocketLauncher launcher, GrenadeProjectileProfile profile)
         {
             activeRuntime?.PlayShot(launcher, profile);
+        }
+
+        internal static void NotifyExternalAltFired(RocketLauncher launcher)
+        {
+            activeRuntime?.PlayExternalAltFired(launcher);
         }
 
         internal static void NotifyRedGelFired(RocketLauncher launcher)
@@ -221,9 +240,9 @@ namespace GrenadeLauncherMod
             activeRuntime?.SyncCooldownDialInternal(launcher, meter, arm);
         }
 
-        internal static void AttachProjectileVisual(Grenade grenade, GrenadeProjectileProfile profile)
+        internal static void AttachProjectileVisual(Grenade grenade, GrenadeLauncherProjectileAppearance appearance)
         {
-            activeRuntime?.AttachProjectileVisualInternal(grenade, profile);
+            activeRuntime?.AttachProjectileVisualInternal(grenade, appearance);
         }
 
         private void LoadVisualPrefab()
@@ -279,6 +298,49 @@ namespace GrenadeLauncherMod
             }
         }
 
+        private Texture2D GetBlueProjectileTexture()
+        {
+            if (blueProjectileTexture != null)
+                return blueProjectileTexture;
+
+            try
+            {
+                Assembly assembly = typeof(Plugin).Assembly;
+                using (Stream stream = assembly.GetManifestResourceStream(BlueProjectileTextureResourceName))
+                {
+                    if (stream == null)
+                        return null;
+                    byte[] data = new byte[stream.Length];
+                    int offset = 0;
+                    while (offset < data.Length)
+                    {
+                        int read = stream.Read(data, offset, data.Length - offset);
+                        if (read <= 0)
+                            break;
+                        offset += read;
+                    }
+                    if (offset != data.Length)
+                        return null;
+
+                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    texture.name = "GrenadeProjectile_Blue_Runtime";
+                    if (!ImageConversion.LoadImage(texture, data, false))
+                    {
+                        Destroy(texture);
+                        return null;
+                    }
+                    texture.wrapMode = TextureWrapMode.Repeat;
+                    texture.filterMode = FilterMode.Bilinear;
+                    blueProjectileTexture = texture;
+                }
+            }
+            catch (Exception exception)
+            {
+                Plugin.LogSource?.LogWarning("Could not load embedded blue grenade projectile texture: " + exception.Message);
+            }
+            return blueProjectileTexture;
+        }
+
         private void ScanLaunchers()
         {
             foreach (RocketLauncher launcher in FindObjectsOfType<RocketLauncher>())
@@ -303,10 +365,22 @@ namespace GrenadeLauncherMod
             instances.Add(launcher, new WeaponVisualInstance(launcher, visualPrefab));
         }
 
+        private void CleanupDualWieldCloneVisualInternal(RocketLauncher launcher)
+        {
+            if (launcher != null && instances.TryGetValue(launcher, out WeaponVisualInstance instance))
+                instance.RemoveInheritedDuplicateVisuals();
+        }
+
         private void PlayShot(RocketLauncher launcher, GrenadeProjectileProfile profile)
         {
             if (launcher != null && instances.TryGetValue(launcher, out WeaponVisualInstance instance))
                 instance.PlayShot(profile);
+        }
+
+        private void PlayExternalAltFired(RocketLauncher launcher)
+        {
+            if (launcher != null && instances.TryGetValue(launcher, out WeaponVisualInstance instance))
+                instance.PlayExternalAltFired();
         }
 
         private void PlayRedGelFired(RocketLauncher launcher)
@@ -327,28 +401,37 @@ namespace GrenadeLauncherMod
                 instance?.ApplyPaintConfiguration();
         }
 
+        private void RefreshLauncherPaintInternal(RocketLauncher launcher)
+        {
+            if (launcher != null && instances.TryGetValue(launcher, out WeaponVisualInstance instance))
+                instance.ApplyPaintConfiguration();
+        }
+
         private void ApplyCooldownDialSettingsToInstances()
         {
             foreach (WeaponVisualInstance instance in instances.Values)
                 instance?.ApplyCooldownDialPose();
         }
 
-        private void AttachProjectileVisualInternal(Grenade grenade, GrenadeProjectileProfile profile)
+        private void AttachProjectileVisualInternal(Grenade grenade, GrenadeLauncherProjectileAppearance appearance)
         {
-            if (grenade == null || UseVanillaVisuals || profile == GrenadeProjectileProfile.BlueDelivery)
+            if (grenade == null || UseVanillaVisuals || appearance == GrenadeLauncherProjectileAppearance.Default)
                 return;
-            string prefabName = profile == GrenadeProjectileProfile.GreenContact
+            string prefabName = appearance == GrenadeLauncherProjectileAppearance.Green
                 ? "GrenadeProjectileGreen"
-                : profile == GrenadeProjectileProfile.RedBurst
+                : appearance == GrenadeLauncherProjectileAppearance.Red
                     ? "GrenadeProjectileRed"
                     : "GrenadeProjectilePrimary";
+            Texture textureOverride = appearance == GrenadeLauncherProjectileAppearance.Blue
+                ? GetBlueProjectileTexture()
+                : null;
             GameObject prefab = visualBundle != null ? visualBundle.LoadAsset<GameObject>(prefabName) : null;
             if (prefab == null)
                 return;
             if (grenade.GetComponent<GrenadeLauncherProjectileVisual>() == null)
             {
                 GrenadeLauncherProjectileVisual marker = grenade.gameObject.AddComponent<GrenadeLauncherProjectileVisual>();
-                marker.Initialize(prefab);
+                marker.Initialize(prefab, textureOverride);
             }
         }
 
@@ -502,6 +585,22 @@ namespace GrenadeLauncherMod
                 visual.SetActive(false);
             }
 
+            internal void RemoveInheritedDuplicateVisuals()
+            {
+                if (launcher == null)
+                    return;
+
+                foreach (Transform child in launcher.GetComponentsInChildren<Transform>(true))
+                {
+                    if (child == null || child == launcher.transform || child.gameObject == visual ||
+                        child.name != "Grenade Launcher Custom Visual")
+                        continue;
+
+                    child.gameObject.SetActive(false);
+                    Destroy(child.gameObject);
+                }
+            }
+
             internal void Refresh()
             {
                 if (launcher == null || visual == null)
@@ -620,6 +719,24 @@ namespace GrenadeLauncherMod
                     ? Time.time + activeOneShotDuration
                     : -1f;
                 PlayConfiguredShotSound(profile);
+            }
+
+            internal void PlayExternalAltFired()
+            {
+                recoilAmount = Mathf.Max(recoilAmount, BlueRecoil);
+                activeOneShotClip = altFireClip;
+                activeOneShotDuration = activeOneShotClip != null ? activeOneShotClip.length : 0f;
+                activeOneShotStartedAt = Time.time;
+                playingAnimationState = AltFireState;
+                rootAnimationActive = false;
+                manualEquipActive = false;
+                manualIdleActive = false;
+                idleTrackingPending = false;
+                equipEndsAt = -1f;
+                RestoreRestPoses();
+                animationFreezeAt = activeOneShotDuration > 0f
+                    ? Time.time + activeOneShotDuration
+                    : -1f;
             }
 
             internal void SyncCooldownDial(UnityEngine.UI.Image nativeMeter, RectTransform nativeArm)
@@ -1460,7 +1577,7 @@ namespace GrenadeLauncherMod
                     if (binding?.Material == null)
                         continue;
 
-                    Color selected = SelectedColorFor(binding.Group);
+                    Color selected = SelectedColorFor(launcher, binding.Group);
                     Color finalColor = new Color(
                         Mathf.Clamp01(selected.r * binding.RelativeColor.r),
                         Mathf.Clamp01(selected.g * binding.RelativeColor.g),
@@ -1489,8 +1606,19 @@ namespace GrenadeLauncherMod
                 return PaintGroup.Silver;
             }
 
-            private static Color SelectedColorFor(PaintGroup group)
+            private static Color SelectedColorFor(RocketLauncher launcher, PaintGroup group)
             {
+                if (GrenadeLauncherIntegration.TryGetExternalPalette(launcher, out GrenadeLauncherPaintPalette palette))
+                {
+                    switch (group)
+                    {
+                        case PaintGroup.Orange: return palette.Orange;
+                        case PaintGroup.Black: return palette.Black;
+                        case PaintGroup.DeepBlack: return palette.DeepBlack;
+                        default: return palette.Silver;
+                    }
+                }
+
                 switch (group)
                 {
                     case PaintGroup.Orange: return orangeColor?.value ?? DefaultOrange;
@@ -1700,7 +1828,7 @@ namespace GrenadeLauncherMod
         private readonly List<Material> runtimeMaterials = new List<Material>();
         private bool customVisible;
 
-        internal void Initialize(GameObject prefab)
+        internal void Initialize(GameObject prefab, Texture textureOverride = null)
         {
             vanillaRenderers = GetComponentsInChildren<Renderer>(true);
             visual = Instantiate(prefab, transform, false);
@@ -1715,7 +1843,7 @@ namespace GrenadeLauncherMod
             Renderer source = Array.Find(vanillaRenderers, renderer => renderer is MeshRenderer || renderer is SkinnedMeshRenderer)
                               ?? Array.Find(vanillaRenderers, renderer => renderer != null);
             Renderer custom = visual.GetComponentInChildren<Renderer>(true);
-            ApplyVanillaProjectileMaterialModel(source);
+            ApplyVanillaProjectileMaterialModel(source, textureOverride);
             if (source != null && custom != null)
             {
                 float sourceSize = Mathf.Max(0.001f, source.bounds.size.magnitude);
@@ -1762,7 +1890,7 @@ namespace GrenadeLauncherMod
             runtimeMaterials.Clear();
         }
 
-        private void ApplyVanillaProjectileMaterialModel(Renderer source)
+        private void ApplyVanillaProjectileMaterialModel(Renderer source, Texture textureOverride)
         {
             if (visual == null)
                 return;
@@ -1775,7 +1903,7 @@ namespace GrenadeLauncherMod
                     Material original = originalMaterials[index];
                     if (original == null)
                         continue;
-                    Texture intendedTexture = original.HasProperty("_MainTex") ? original.mainTexture : null;
+                    Texture intendedTexture = textureOverride ?? (original.HasProperty("_MainTex") ? original.mainTexture : null);
                     // Projectile texture is a Source-engine albedo atlas. ULTRAKILL's
                     // viewmodel shader and Standard both alter it heavily under scene
                     // lighting. Unlit/Texture preserves its authored pixels one-for-one.

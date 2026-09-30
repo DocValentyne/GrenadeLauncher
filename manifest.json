@@ -1,11 +1,11 @@
 {
   "name": "Grenade_Launcher",
-  "version_number": "2.0.0",
+  "version_number": "2.0.2",
   "website_url": "https://github.com/DocValentyne/GrenadeLauncher",
   "description": "Adds a fully configurable alternate Grenade Launcher for all three ULTRAKILL Rocket Launcher variants.",
-    "dependencies": [
-        "BepInEx-BepInExPack-5.4.2305",
-        "EternalsTeam-PluginConfigurator-1.10.2",
-        "TheAliMods-ConductionFix-1.0.0"
-    ]
+  "dependencies": [
+    "BepInEx-BepInExPack-5.4.2305",
+    "EternalsTeam-PluginConfigurator-1.10.2",
+    "TheAliMods-ConductionFix-1.0.0"
+  ]
 }
