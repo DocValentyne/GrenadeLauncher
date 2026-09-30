@@ -355,7 +355,8 @@ namespace GrenadeLauncherMod
         private static void Prefix(RocketLauncher __instance, out State __state)
         {
             __state = new State();
-            if (Plugin.Instance == null || !Plugin.Instance.IsGrenadeModeEnabled(__instance) || __instance.variation != 2)
+            if (Plugin.Instance == null || !Plugin.Instance.IsGrenadeModeEnabled(__instance) || __instance.variation != 2 ||
+                GrenadeLauncherIntegration.UsesExternalSecondary(__instance))
                 return;
 
             PlayerInput input = MonoSingleton<InputManager>.Instance?.InputSource;
@@ -478,6 +479,126 @@ namespace GrenadeLauncherMod
         }
     }
 
+    internal static class RedGrenadeFuelIsolation
+    {
+        private const float RechargePerSecond = 0.125f;
+        private static float fuel = 1f;
+        private static float lastUpdateAt = -1f;
+
+        internal static float Current
+        {
+            get
+            {
+                Refresh();
+                return fuel;
+            }
+        }
+
+        internal static void Capture(float borrowedFuel)
+        {
+            fuel = CooldownRules.NoWeaponCooldown ? 1f : Mathf.Clamp01(borrowedFuel);
+            lastUpdateAt = Time.time;
+        }
+
+        internal static void Refresh()
+        {
+            float now = Time.time;
+            if (lastUpdateAt < 0f || now < lastUpdateAt)
+                lastUpdateAt = now;
+
+            if (CooldownRules.NoWeaponCooldown)
+                fuel = 1f;
+            else
+                fuel = Mathf.MoveTowards(fuel, 1f, Mathf.Max(0f, now - lastUpdateAt) * RechargePerSecond);
+
+            lastUpdateAt = now;
+        }
+
+        internal static void Reset()
+        {
+            fuel = 1f;
+            lastUpdateAt = Time.time;
+        }
+    }
+
+    [HarmonyPatch(typeof(RocketLauncher), "Update")]
+    [HarmonyPriority(Priority.First)]
+    internal static class RedGrenadeFuelUpdateIsolationPatch
+    {
+        private struct State
+        {
+            internal bool Active;
+            internal WeaponCharges Charges;
+            internal float NativeFuel;
+        }
+
+        private static void Prefix(RocketLauncher __instance, out State __state)
+        {
+            __state = new State();
+            if (__instance == null || __instance.variation != 2 || Plugin.Instance == null ||
+                !Plugin.Instance.IsGrenadeModeEnabled(__instance))
+                return;
+
+            WeaponCharges charges = MonoSingleton<WeaponCharges>.Instance;
+            if (charges == null)
+                return;
+
+            __state.Active = true;
+            __state.Charges = charges;
+            __state.NativeFuel = charges.rocketNapalmFuel;
+            charges.rocketNapalmFuel = RedGrenadeFuelIsolation.Current;
+        }
+
+        private static Exception Finalizer(State __state, Exception __exception)
+        {
+            if (__state.Active && __state.Charges != null)
+            {
+                RedGrenadeFuelIsolation.Capture(__state.Charges.rocketNapalmFuel);
+                __state.Charges.rocketNapalmFuel = __state.NativeFuel;
+            }
+            return __exception;
+        }
+    }
+
+    [HarmonyPatch(typeof(RocketLauncher), nameof(RocketLauncher.ShootNapalm))]
+    [HarmonyPriority(Priority.First)]
+    internal static class RedGrenadeFuelShotIsolationPatch
+    {
+        private struct State
+        {
+            internal bool Active;
+            internal WeaponCharges Charges;
+            internal float NativeFuel;
+        }
+
+        private static void Prefix(RocketLauncher __instance, out State __state)
+        {
+            __state = new State();
+            if (__instance == null || __instance.variation != 2 || Plugin.Instance == null ||
+                !Plugin.Instance.IsGrenadeModeEnabled(__instance))
+                return;
+
+            WeaponCharges charges = MonoSingleton<WeaponCharges>.Instance;
+            if (charges == null)
+                return;
+
+            __state.Active = true;
+            __state.Charges = charges;
+            __state.NativeFuel = charges.rocketNapalmFuel;
+            charges.rocketNapalmFuel = RedGrenadeFuelIsolation.Current;
+        }
+
+        private static Exception Finalizer(State __state, Exception __exception)
+        {
+            if (__state.Active && __state.Charges != null)
+            {
+                RedGrenadeFuelIsolation.Capture(__state.Charges.rocketNapalmFuel);
+                __state.Charges.rocketNapalmFuel = __state.NativeFuel;
+            }
+            return __exception;
+        }
+    }
+
     [HarmonyPatch(typeof(RocketLauncher), "Update")]
     internal static class GrenadeAlternateUpdatePatch
     {
@@ -494,12 +615,18 @@ namespace GrenadeLauncherMod
             internal bool Active;
             internal bool AltHeld;
             internal bool AltPressedThisFrame;
+            internal WeaponCharges Charges;
+            internal float RocketCannonballCharge;
+            internal float RocketFreezeTime;
+            internal bool RocketFrozen;
+            internal bool TemporarilyOverrodeNativeAltState;
         }
 
         private static void Prefix(RocketLauncher __instance, out State __state)
         {
             __state = new State();
-            if (Plugin.Instance == null || !Plugin.Instance.IsGrenadeModeEnabled(__instance) || (__instance.variation != 0 && __instance.variation != 1))
+            if (Plugin.Instance == null || !Plugin.Instance.IsGrenadeModeEnabled(__instance) || (__instance.variation != 0 && __instance.variation != 1) ||
+                GrenadeLauncherIntegration.UsesExternalSecondary(__instance))
                 return;
 
             PlayerInput input = MonoSingleton<InputManager>.Instance?.InputSource;
@@ -512,6 +639,12 @@ namespace GrenadeLauncherMod
             WeaponCharges charges = MonoSingleton<WeaponCharges>.Instance;
             if (charges != null)
             {
+                __state.Charges = charges;
+                __state.RocketCannonballCharge = charges.rocketCannonballCharge;
+                __state.RocketFreezeTime = charges.rocketFreezeTime;
+                __state.RocketFrozen = charges.rocketFrozen;
+                __state.TemporarilyOverrodeNativeAltState = true;
+
                 if (__instance.variation == 1)
                     charges.rocketCannonballCharge = AlternateFireController.GreenCooldownProgress;
                 else if (__instance.variation == 0)
@@ -544,7 +677,8 @@ namespace GrenadeLauncherMod
                     WeaponVisualRuntime.SyncCooldownDial(__instance, meter, TimerArm(__instance));
                 }
             }
-            else if (Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(__instance) && __instance.variation == 2)
+            else if (Plugin.Instance != null && Plugin.Instance.IsGrenadeModeEnabled(__instance) && __instance.variation == 2 &&
+                     !GrenadeLauncherIntegration.UsesExternalSecondary(__instance))
             {
                 // Red gel still uses the native fuel meter, but the visible dial must be
                 // the custom-model copy rather than the rocket rig's animated display.
@@ -552,15 +686,26 @@ namespace GrenadeLauncherMod
                 if (meter != null)
                     WeaponVisualRuntime.SyncCooldownDial(__instance, meter, TimerArm(__instance));
             }
+            RestoreNativeAltState(__state);
             if (__state.Active && __state.AltHeld)
                 AlternateFireController.TryFire(__instance, __state.AltPressedThisFrame);
         }
 
         private static Exception Finalizer(State __state, Exception __exception)
         {
+            RestoreNativeAltState(__state);
             if (__state.Active)
                 AlternateFireInputContext.Exit();
             return __exception;
+        }
+
+        private static void RestoreNativeAltState(State state)
+        {
+            if (!state.TemporarilyOverrodeNativeAltState || state.Charges == null)
+                return;
+            state.Charges.rocketCannonballCharge = state.RocketCannonballCharge;
+            state.Charges.rocketFreezeTime = state.RocketFreezeTime;
+            state.Charges.rocketFrozen = state.RocketFrozen;
         }
 
         private static void PlayBlueMilestoneSounds(RocketLauncher launcher, float progress)
@@ -715,9 +860,8 @@ namespace GrenadeLauncherMod
                         greenDisplayReadyAt = Time.time + greenDisplayDuration;
                         greenReadyAt = greenDisplayReadyAt;
                     }
-                    WeaponCharges charges = MonoSingleton<WeaponCharges>.Instance;
-                    if (charges != null)
-                        charges.rocketCannonballCharge = 0f;
+                    // Green GL owns its cooldown in greenReadyAt/greenDisplayReadyAt. Do not consume
+                    // the vanilla Rocket Launcher's global Cannonball charge.
                 }
                 finally
                 {
@@ -1273,6 +1417,13 @@ namespace GrenadeLauncherMod
             Collider surface = stain != null ? stain.Surface : stuckSurface;
             if (surface != null)
             {
+                // A pile of grenades can chain-detonate on the same gel patch in one frame.
+                // Their blast damage still happens independently, but spawning/attaching/
+                // igniting an overlapping gasoline stain for every single grenade is pure
+                // duplicate work and was a major hitch source in large traps.
+                if (!GrenadeLauncherPerformance.TryBeginTerrainIgnition(surface, origin))
+                    return false;
+
                 // Create a normal gasoline stain only now, at grenade's position. Blue gel
                 // itself is never registered as gasoline and cannot be lit by other blasts.
                 GasolineStain source = stain != null ? stain.GetComponent<GasolineStain>() : null;
@@ -3356,6 +3507,7 @@ namespace GrenadeLauncherMod
         {
             AlternateFireController.Reset();
             RocketCooldownSync.Reset();
+            RedGrenadeFuelIsolation.Reset();
         }
     }
 
@@ -3399,6 +3551,7 @@ namespace GrenadeLauncherMod
             AlternateFireController.Reset();
             RedBurstController.Reset();
             RocketCooldownSync.Reset();
+            RedGrenadeFuelIsolation.Reset();
             AlternateFireInputContext.Depth = 0;
             AlternateFireInputContext.SuppressedAction = null;
             RedBurstInputContext.Depth = 0;

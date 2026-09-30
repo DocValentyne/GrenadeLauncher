@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.2
+
+- Greatly improved performance when many grenades are active in the same trap.
+- Fixed a bug that caused grenades to lose all gravity while the Freeze Frame Rocket Launcher's alt-fire was active.
+- Added new API systems for deeper integration with other mods, in preparation for an upcoming mod.
+
+
 ## 2.0.1
 
 - Fixed the Wiki banner image not displaying on the Thunderstore README.

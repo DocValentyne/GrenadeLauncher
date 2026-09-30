@@ -24,7 +24,7 @@ namespace GrenadeLauncherMod
     {
         public const string Guid = "docvalentyne.ultrakill.grenadelauncher";
         public const string Name = "Grenade Launcher";
-        public const string Version = "2.0.1";
+        public const string Version = "2.0.2";
 
         internal static Plugin Instance { get; private set; }
         internal static ManualLogSource LogSource { get; private set; }
@@ -46,8 +46,14 @@ namespace GrenadeLauncherMod
             return loadout.GetVariant(variation);
         }
 
-        internal bool IsGrenadeModeEnabled(RocketLauncher launcher) =>
-            launcher != null && IsGrenadeModeEnabled(launcher.variation);
+        internal bool IsGrenadeModeEnabled(RocketLauncher launcher)
+        {
+            if (launcher == null)
+                return false;
+            if (GrenadeLauncherIntegration.TryGetExternalGrenadeMode(launcher, out bool externalGrenadeMode))
+                return externalGrenadeMode;
+            return IsGrenadeModeEnabled(launcher.variation);
+        }
 
         internal bool AnyGrenadeModeEnabled
         {
@@ -315,11 +321,14 @@ namespace GrenadeLauncherMod
                 return;
             }
 
-            float grenadeInterval = Mathf.Max(0f, PluginSettings.FireInterval);
-            grenadeReadyAt = Time.time + grenadeInterval;
-            standardReadyAt = Time.time + (grenadeShot
-                ? grenadeInterval
-                : Mathf.Max(0f, firedLauncher != null ? firedLauncher.rateOfFire : 1f));
+            if (grenadeShot)
+            {
+                grenadeReadyAt = Time.time + Mathf.Max(0f, PluginSettings.FireInterval);
+            }
+            else
+            {
+                standardReadyAt = Time.time + Mathf.Max(0f, firedLauncher != null ? firedLauncher.rateOfFire : 1f);
+            }
         }
 
         internal static void ApplyWhenEquipped(RocketLauncher launcher)
@@ -426,6 +435,8 @@ namespace GrenadeLauncherMod
                 GrenadeSpawnContext.Enter();
                 __state.EnteredContext = true;
             }
+            GrenadeLauncherProjectileAppearanceContext.Enter(
+                GrenadeLauncherIntegration.ConsumeProjectileAppearance(__instance, __state.ProjectileProfile));
             return true;
         }
 
@@ -460,6 +471,7 @@ namespace GrenadeLauncherMod
             launcher.rateOfFire = state.RateOfFire;
             if (state.EnteredContext)
                 GrenadeSpawnContext.Exit();
+            GrenadeLauncherProjectileAppearanceContext.Exit();
         }
     }
 
@@ -1169,8 +1181,26 @@ namespace GrenadeLauncherMod
                 GrenadeLauncherProjectile projectile = __instance.gameObject.AddComponent<GrenadeLauncherProjectile>();
                 projectile.Grenade = __instance;
                 projectile.Profile = GrenadeSpawnContext.Profile;
-                WeaponVisualRuntime.AttachProjectileVisual(__instance, GrenadeSpawnContext.Profile);
+                WeaponVisualRuntime.AttachProjectileVisual(__instance, GrenadeLauncherProjectileAppearanceContext.Current);
             }
+        }
+    }
+
+    // Grenade.frozen is a global view of WeaponCharges.rocketFrozen. That is correct for rockets,
+    // but custom Grenade Launcher projectiles are ordinary ballistic grenades and must not inherit
+    // Freeze Frame state just because a Freeze Frame Rocket Launcher exists in the same loadout.
+    // Override the property only for GL-owned grenades so every native/custom caller sees them as
+    // unfrozen; this also prevents the native freeze VFX from appearing on them.
+    [HarmonyPatch(typeof(Grenade), "get_frozen")]
+    internal static class GrenadeLauncherFreezeFrameIsolationPatch
+    {
+        private static bool Prefix(Grenade __instance, ref bool __result)
+        {
+            if (__instance.GetComponent<GrenadeLauncherProjectile>() == null &&
+                __instance.GetComponent<BlueHookDeliveryProjectile>() == null)
+                return true;
+            __result = false;
+            return false;
         }
     }
 
@@ -2425,6 +2455,11 @@ namespace GrenadeLauncherMod
             if (Grenade != null && Grenade.explosion != null)
             {
                 GameObject blast = Instantiate(Grenade.explosion, transform.position, Quaternion.identity);
+                // Keep every Explosion component and therefore every damage/knockback event,
+                // but cap redundant visual/audio feedback when a large gel trap detonates in
+                // one frame. Four full blasts are still visible; the rest are mechanics-only.
+                if (mode == GrenadeExplosionMode.Stuck && !GrenadeLauncherPerformance.AllowFullStuckBlastFeedback())
+                    GrenadeLauncherPerformance.ReduceExplosionFeedback(blast);
                 GrenadeLauncherExplosionMarker blastMarker = blast.AddComponent<GrenadeLauncherExplosionMarker>();
                 blastMarker.Parried = mode == GrenadeExplosionMode.Parried;
                 blastMarker.Mode = mode;

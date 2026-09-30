@@ -7,7 +7,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>GrenadeLauncher</AssemblyName>
     <RootNamespace>GrenadeLauncherMod</RootNamespace>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <ManagedDir>$(GameDir)\ULTRAKILL_Data\Managed</ManagedDir>
   </PropertyGroup>
@@ -21,6 +21,7 @@
     <Compile Include="Plugin.cs" />
     <Compile Include="AlternateFires.cs" />
     <Compile Include="WeaponVisuals.cs" />
+    <Compile Include="CompatibilityApi.cs" />
     <Reference Include="Assembly-CSharp" HintPath="$(ManagedDir)\Assembly-CSharp.dll" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
@@ -44,6 +45,7 @@
   <ItemGroup>
     <EmbeddedResource Include="GrenadeLauncher.png" LogicalName="GrenadeLauncherMod.icon.png" />
     <EmbeddedResource Include="assets\grenadelauncher_visuals" LogicalName="GrenadeLauncherMod.visuals" />
+    <EmbeddedResource Include="assets\GrenadeProjectile_Blue_Runtime.png" LogicalName="GrenadeLauncherMod.projectile.blue.png" />
     <EmbeddedResource Include="grenade_launcher_shoot.wav" LogicalName="GrenadeLauncherMod.audio.grenade_launcher_shoot.wav" />
     <EmbeddedResource Include="loch_n_load_shoot.wav" LogicalName="GrenadeLauncherMod.audio.loch_n_load_shoot.wav" />
     <EmbeddedResource Include="loose_cannon_shoot.wav" LogicalName="GrenadeLauncherMod.audio.loose_cannon_shoot.wav" />

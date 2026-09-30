@@ -20,6 +20,10 @@ Open ULTRAKILL's weapon terminal and select the alternate form for any Rocket La
 
 Configuration is available under **Options -> Plugin Configurator -> Grenade Launcher**.
 
+## Compatibility API
+
+Grenade Launcher 2.0.2 adds a per-weapon integration API for other mods. External mods can opt one exact `RocketLauncher` instance into Grenade Launcher primary-fire behavior (or force it to stay native), hand secondary-fire ownership back to the external mod, provide a per-instance custom-model paint palette, drive the custom cooldown dial/AltFire animation, and select grenade projectile appearances per-primary or per-shot. This does not change the player's terminal selection for other Rocket Launchers of the same variation.
+
 ## Leaderboards
 
 While the mod is loaded, Cyber Grind scores are kept in your local save but are not submitted to the public Steam leaderboard.
